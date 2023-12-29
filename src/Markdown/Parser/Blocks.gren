@@ -1,0 +1,706 @@
+module Markdown.Parser.Blocks exposing (..)
+
+{-|-}
+
+import Markdown.Block exposing ( Block(..) )
+import Markdown.Inline exposing ( Inline )
+import Markdown.Parser.Inlines
+import Parser exposing (..)
+import Parser.Extra exposing (..)
+
+
+
+-- 🌳
+
+
+type RawBlock
+    = RawBlockQuote String
+    | RawFencedCode
+        { body : String
+        , language : Maybe String
+        }
+    | RawHeading
+        { level : Int
+        }
+        String
+    | RawIndentedCode String
+    | RawOrderedList
+        { leadingSpaces : Int
+        , start : Int
+        , symbol : String
+        }
+        (Array (Array String))
+    | RawParagraph
+        { closed : Bool
+        }
+        String
+    | RawThematicBreak
+    | RawUnorderedList
+        { leadingSpaces : Int
+        , symbol : String
+        }
+        (Array (Array String))
+
+
+isClosed =
+    { closed = True
+    }
+
+
+isOpen =
+    { closed = False
+    }
+
+
+
+-- 🛠️
+
+
+parse : String -> Result (Array DeadEnd) (Array Block)
+parse =
+    Parser.run parser
+
+
+parseRaw : String -> Result (Array DeadEnd) (Array RawBlock)
+parseRaw =
+    Parser.run (loop [] rawBlockParser)
+
+
+
+-- TOP-LEVEL PARSER
+
+
+parser : Parser (Array Block)
+parser =
+    map
+        (Array.foldl
+            (\rawBlock blocks ->
+                case rawBlock of
+                    -- 
+                    -- BlockQuote
+                    -- 
+                    RawBlockQuote string ->
+                        let
+                            innerBlocks =
+                                Result.withDefault [] (parse string)
+                        in
+                        Array.pushLast (BlockQuote innerBlocks) blocks
+
+                    -- 
+                    -- CodeBlock (fenced)
+                    -- 
+                    RawFencedCode { body, language } ->
+                        Array.pushLast
+                            (CodeBlock
+                                { body = body
+                                , language = language
+                                }
+                            )
+                            blocks
+
+                    -- 
+                    -- Heading
+                    -- 
+                    RawHeading props string ->
+                        let
+                            inlines =
+                                string
+                                    |> Markdown.Parser.Inlines.parse
+                                    |> Result.withDefault []
+                        in
+                        Array.pushLast (Heading props inlines) blocks
+
+                    -- 
+                    -- CodeBlock (indented)
+                    -- 
+                    RawIndentedCode body ->
+                        Array.pushLast
+                            (CodeBlock
+                                { body = body
+                                , language = Nothing
+                                }
+                            )
+                            blocks
+
+                    -- 
+                    -- OrderedLooseList & OrderedTightList
+                    -- 
+                    RawOrderedList { start } rawListItems ->
+                        let
+                            listItems =
+                                Array.map (String.join "\n") rawListItems
+
+                            isLooseList =
+                                Array.any (\a -> Array.length a > 1) rawListItems
+
+                            props =
+                                { start = start
+                                }
+
+                            block =
+                                if isLooseList then
+                                    OrderedLooseList props (Array.map (String.trim >> parse >> Result.withDefault []) listItems)
+                                else
+                                    OrderedTightList props (Array.map (String.trim >> Markdown.Parser.Inlines.parse >> Result.withDefault []) listItems)
+                        in
+                        Array.pushLast block blocks
+
+                    -- 
+                    -- Paragraph
+                    -- 
+                    RawParagraph _ string ->
+                        let
+                            inlines =
+                                string
+                                    |> String.trimRight
+                                    |> Markdown.Parser.Inlines.parse
+                                    |> Result.withDefault []
+                        in
+                        Array.pushLast (Paragraph inlines) blocks
+
+                    -- 
+                    -- ThematicBreak
+                    -- 
+                    RawThematicBreak ->
+                        Array.pushLast ThematicBreak blocks
+
+                    -- 
+                    -- UnorderedLooseList & UnorderedTightList
+                    -- 
+                    RawUnorderedList _ rawListItems ->
+                        let
+                            listItems =
+                                Array.map (String.join "\n") rawListItems
+
+                            isLooseList =
+                                Array.any (\a -> Array.length a > 1) rawListItems
+
+                            block =
+                                if isLooseList then
+                                    UnorderedLooseList (Array.map (String.trim >> parse >> Result.withDefault []) listItems)
+                                else
+                                    UnorderedTightList (Array.map (String.trim >> Markdown.Parser.Inlines.parse >> Result.withDefault []) listItems)
+                        in
+                        Array.pushLast block blocks
+            )
+            []
+        )
+        (loop [] rawBlockParser)
+
+
+
+-- RAW PARSER (1 level below top)
+
+
+rawBlockParser : Array RawBlock -> Parser (Step (Array RawBlock) (Array RawBlock))
+rawBlockParser blocks =
+    let
+        block =
+            map (\b -> Loop (Array.pushLast b blocks))
+
+        lastBlockWasFinishedParagraphOrSomethingElse =
+            case Array.popLast blocks of
+                Just { last = RawParagraph { closed } _ } ->
+                    closed
+
+                _ ->
+                    True
+
+        skip =
+            problem ""
+
+        cannotInterruptParagraph p =
+            if lastBlockWasFinishedParagraphOrSomethingElse then
+                p
+            else
+                skip
+    in
+    oneOf
+        [ -- Check if we reached the end
+          map (\_ -> Done blocks) (succeed identity |. end)
+
+        , -- 
+          block (backtrackable (cannotInterruptParagraph headingParser))
+        , block (backtrackable blockQuoteParser)
+        , block (backtrackable thematicBreakParser)
+
+        , -- Unordered list
+          succeed (unorderedListManager blocks) |= backtrackable unorderedListParser
+
+        , -- Ordered list
+          succeed (orderedListManager blocks) |= backtrackable orderedListParser
+
+        , -- Fenced code
+          block (backtrackable fencedCodeParser)
+
+        , -- Indented code
+          succeed
+            (\line ->
+                case Array.popLast blocks of
+                    Just { last = RawIndentedCode ic, initial } ->
+                        initial
+                            |> Array.pushLast (RawIndentedCode (ic ++ "\n" ++ line))
+                            |> Loop
+
+                    _ ->
+                        blocks
+                            |> Array.pushLast (RawIndentedCode line)
+                            |> Loop
+            )
+            |= backtrackable (cannotInterruptParagraph indentedCodeParser)
+
+        , -- If all fails, then it's a paragraph.
+          -- Try parsing one line at a time.
+          succeed
+            (\line ->
+                case Array.popLast blocks of
+                    Just { last = RawParagraph { closed = False } par, initial } ->
+                        if String.endsWith "\n" par then
+                            initial
+                                |> Array.pushLast (RawParagraph isClosed (String.dropRight 1 par))
+                                |> Array.pushLast (RawParagraph isOpen line)
+                                |> Loop
+                        else if par == "" then
+                            initial
+                                |> Array.pushLast (RawParagraph isOpen line)
+                                |> Loop
+                        else if line == "" then
+                            initial
+                                |> Array.pushLast (RawParagraph isClosed par)
+                                |> Loop
+                        else
+                            initial
+                                |> Array.pushLast (RawParagraph isOpen (par ++ "\n" ++ line))
+                                |> Loop
+
+                    _ ->
+                        if line == "" then
+                            Loop blocks
+                        else
+                            blocks
+                                |> Array.pushLast (RawParagraph isOpen line)
+                                |> Loop
+            )
+            |. many (specificChar ' ')
+            |= getChompedString (chompUntilEndOr "\n")
+            |. oneOf
+                    [ chompIf isLineEnding
+                    , end
+                    ]
+        ]
+
+
+
+-- INDIVIDUAL PARSERS
+
+
+blockQuoteParser : Parser RawBlock
+blockQuoteParser =
+    succeed identity
+        |. notMoreThanXSpaces 3
+        |. specificChar '>'
+        |= getChompedString (chompUntilEndOr "\n\n")
+        |. spaces
+        |> andThen
+                (\string ->
+                    -- Take out a single '>' from each line,
+                    -- but only if it's led by no more than 3 spaces.
+                    string
+                        |> String.split "\n"
+                        |> Array.map
+                                (\line ->
+                                    if String.startsWith "    " line then
+                                        line
+                                    else if String.startsWith ">" (String.trim line) then
+                                        String.trim (String.dropLeft 1 (String.trim line))
+                                    else
+                                        String.trim line
+                                )
+                        |> String.join "\n"
+                        |> RawBlockQuote
+                        |> succeed
+                )
+
+
+fencedCodeParser : Parser RawBlock
+fencedCodeParser =
+    succeed identity
+        |. notMoreThanXSpaces 3
+        |= getChompedString
+                (oneOf
+                    [ symbol "```"
+                    , symbol "~~~"
+                    ]
+                )
+        |> andThen
+                (\sym ->
+                    let
+                        char =
+                            if sym == "~~~" then
+                                '~'
+                            else
+                                '`'
+                    in
+                    succeed identity
+                        |= many (specificChar char)
+                        |> map (\chars -> String.fromArray (Array.repeat (3 + Array.length chars) char))
+                )
+        |> andThen
+                (\opening ->
+                    succeed identity
+                        |= getChompedString (chompUntilEndOr "\n")
+                        |> map
+                                (\l ->
+                                    { opening = opening
+                                    , language =
+                                        case Maybe.map String.trim (Array.first (String.split " " l)) of
+                                            Just "" ->
+                                                Nothing
+
+                                            m ->
+                                                m
+                                    }
+                                )
+                )
+        |> andThen
+                (\{ opening, language } ->
+                    succeed identity
+                        |= getChompedString (chompUntilEndOr opening)
+                        |. symbol opening
+                        |> map
+                                (\string ->
+                                    let
+                                        lines =
+                                            String.split "\n" string
+
+                                        formattedLines =
+                                            case Array.popLast lines of
+                                                Just { last, initial } ->
+                                                    Array.dropFirst 1 initial
+
+                                                Nothing ->
+                                                    []
+                                    in
+                                    RawFencedCode
+                                        { body = String.join "\n" formattedLines
+                                        , language = language
+                                        }
+                                )
+                )
+
+
+indentedCodeParser : Parser String
+indentedCodeParser =
+    succeed identity
+        |. symbol "    "
+        |= getChompedString (chompUntilEndOr "\n")
+        |. chompIf isLineEnding
+        |> identity
+
+
+headingParser : Parser RawBlock
+headingParser =
+    succeed identity
+        |. notMoreThanXSpaces 3
+        |= some (specificChar '#')
+        |> map (\{ rest } -> 1 + Array.length rest)
+        |> andThen
+                (\level ->
+                    if level > 6 then
+                        problem "Headers only go up to 6"
+                    else
+                        succeed
+                            (RawHeading
+                                { level = level
+                                }
+                            )
+                            |. some (specificChar ' ')
+                            |= getChompedString (chompUntilEndOr "\n")
+                            |. oneOf
+                                    [ end
+                                    , spaces
+                                    ]
+                )
+
+
+orderedListManager :
+    Array RawBlock
+    -> { leadingSpaces : Int
+       , line : String
+       , start : Int
+       , symbol : String
+       }
+    -> Step (Array RawBlock) (Array RawBlock)
+orderedListManager blocks list =
+    let
+        props =
+            { leadingSpaces = list.leadingSpaces
+            , start = list.start
+            , symbol = list.symbol
+            }
+    in
+    case Array.popLast blocks of
+        Just { last = RawOrderedList lastListProps lastListItems, initial } ->
+            -- Previous list exists
+            lastBlockWasList
+                RawOrderedList
+                { currentList =
+                    { props = props
+                    , line = list.line
+                    }
+                , lastList =
+                    { props = lastListProps
+                    , items = lastListItems
+                    }
+                , allBlocksExceptLast = initial
+                , allBlocks = blocks
+                }
+
+        _ ->
+            -- New list
+            list.line
+                |> Array.singleton
+                |> Array.singleton
+                |> RawOrderedList props
+                |> (\b -> Array.pushLast b blocks)
+                |> Loop
+
+
+orderedListParser :
+    Parser
+        { leadingSpaces : Int
+        , line : String
+        , start : Int
+        , symbol : String
+        }
+orderedListParser =
+    succeed identity
+        |= many (specificChar ' ')
+        |> andThen
+                (\leadingSpaces ->
+                    if Array.length leadingSpaces > 3 then
+                        problem "Cannot have more than 3 leading spaces"
+                    else
+                        succeed identity
+                            |= getChompedString (chompOneOrMore Char.isDigit)
+                            |> andThen
+                                    (\string ->
+                                        case String.toInt string of
+                                            Just int ->
+                                                succeed int
+
+                                            Nothing ->
+                                                problem "Couldn\'t parse string as number"
+                                    )
+                            |> andThen
+                                    (\start ->
+                                        succeed identity
+                                            |. oneOf
+                                                    [ specificChar '.'
+                                                    , specificChar ')'
+                                                    ]
+                                            |. specificChar ' '
+                                            |> getChompedString
+                                            |> map
+                                                    (\s ->
+                                                        { start = start
+                                                        , symbol = s
+                                                        }
+                                                    )
+                                    )
+                            |> andThen
+                                    (\{ start, symbol } ->
+                                        succeed identity
+                                            |= getChompedString (chompUntilEndOr "\n")
+                                            |. chompIf isLineEnding
+                                            |> map
+                                                    (\line ->
+                                                        { leadingSpaces = Array.length leadingSpaces
+                                                        , line = line
+                                                        , start = start
+                                                        , symbol = symbol
+                                                        }
+                                                    )
+                                    )
+                )
+
+
+thematicBreakParser : Parser RawBlock
+thematicBreakParser =
+    succeed identity
+        |. notMoreThanXSpaces 3
+        |= oneOf
+                [ specificChar '-'
+                , specificChar '_'
+                , specificChar '*'
+                ]
+        |> andThen
+                (\openingChar ->
+                    let
+                        term =
+                            String.fromArray (Array.repeat 2 openingChar)
+                    in
+                    succeed identity
+                        |= getChompedString (chompUntilEndOr "\n")
+                        |. spaces
+                        |> andThen
+                                (\text ->
+                                    if String.startsWith term text then
+                                        succeed RawThematicBreak
+                                    else
+                                        problem "Not a thematic break"
+                                )
+                )
+
+
+unorderedListManager :
+    Array RawBlock
+    -> { leadingSpaces : Int
+       , line : String
+       , symbol : String
+       }
+    -> Step (Array RawBlock) (Array RawBlock)
+unorderedListManager blocks list =
+    case Array.popLast blocks of
+        Just { last = RawUnorderedList lastListProps lastListItems, initial } ->
+            -- Previous list exists
+            lastBlockWasList
+                RawUnorderedList
+                { currentList =
+                    { props =
+                        { leadingSpaces = list.leadingSpaces
+                        , symbol = list.symbol
+                        }
+                    , line = list.line
+                    }
+                , lastList =
+                    { props = lastListProps
+                    , items = lastListItems
+                    }
+                , allBlocksExceptLast = initial
+                , allBlocks = blocks
+                }
+
+        _ ->
+            -- New list
+            list.line
+                |> Array.singleton
+                |> Array.singleton
+                |> RawUnorderedList
+                        { leadingSpaces = list.leadingSpaces
+                        , symbol = list.symbol
+                        }
+                |> (\b -> Array.pushLast b blocks)
+                |> Loop
+
+
+unorderedListParser :
+    Parser
+        { leadingSpaces : Int
+        , line : String
+        , symbol : String
+        }
+unorderedListParser =
+    succeed identity
+        |= many (specificChar ' ')
+        |> andThen
+                (\leadingSpaces ->
+                    if Array.length leadingSpaces > 3 then
+                        problem "Cannot have more than 3 leading spaces"
+                    else
+                        succeed identity
+                            |= oneOf
+                                    [ specificChar '-'
+                                    , specificChar '+'
+                                    , specificChar '*'
+                                    ]
+                            |. specificChar ' '
+                            |> andThen
+                                    (\listChar ->
+                                        succeed identity
+                                            |= getChompedString (chompUntilEndOr "\n")
+                                            |. chompIf isLineEnding
+                                            |> map
+                                                    (\line ->
+                                                        { leadingSpaces = Array.length leadingSpaces
+                                                        , line = line
+                                                        , symbol = String.fromArray (Array.singleton listChar)
+                                                        }
+                                                    )
+                                    )
+                )
+
+
+
+-- LISTS
+
+
+lastBlockWasList :
+    ({ props
+        | leadingSpaces : Int
+        , symbol : String
+     }
+     -> Array (Array String)
+     -> RawBlock
+    )
+    -> { currentList :
+            { props :
+                { props
+                    | leadingSpaces : Int
+                    , symbol : String
+                }
+            , line : String
+            }
+       , lastList :
+            { props :
+                { props
+                    | leadingSpaces : Int
+                    , symbol : String
+                }
+            , items : Array (Array String)
+            }
+       , allBlocksExceptLast : Array RawBlock
+       , allBlocks : Array RawBlock
+       }
+    -> Step (Array RawBlock) (Array RawBlock)
+lastBlockWasList constructor { currentList, lastList, allBlocksExceptLast, allBlocks } =
+    let
+        addToBlocks l b =
+            Loop (Array.pushLast b l)
+
+        addToSameList =
+            constructor lastList.props >> addToBlocks allBlocksExceptLast
+
+        formattedLine =
+            if currentList.props.leadingSpaces > 0 then
+                currentList.props.symbol ++ " " ++ currentList.line
+            else
+                currentList.line
+
+        wrapLine =
+            Array.singleton >> Array.singleton
+    in
+    if currentList.props.leadingSpaces >= lastList.props.leadingSpaces + String.length lastList.props.symbol then
+        -- Content belongs to previous list item
+        case Array.popLast lastList.items of
+            Just { last = lastItem, initial = otherItems } ->
+                lastItem
+                    |> Array.pushLast formattedLine
+                    |> (\newLines -> Array.pushLast newLines otherItems)
+                    |> addToSameList
+
+            Nothing ->
+                formattedLine
+                    |> wrapLine
+                    |> addToSameList
+    else if currentList.props.symbol == lastList.props.symbol then
+        -- Same list, new item
+        lastList.items
+            |> Array.pushLast (Array.singleton currentList.line)
+            |> addToSameList
+    else
+        -- New list
+        currentList.line
+            |> wrapLine
+            |> constructor currentList.props
+            |> addToBlocks allBlocks

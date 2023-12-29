@@ -1,0 +1,630 @@
+module Markdown.Parser.Inlines exposing (..)
+
+{-|-}
+
+import Markdown.Inline exposing ( Inline(..) )
+import Maybe.Extra as Maybe
+import Parser exposing (..)
+import Parser.Extra exposing (..)
+
+
+
+-- 🛠️
+
+
+parse : String -> Result (Array DeadEnd) (Array Inline)
+parse =
+    Parser.run parser
+
+
+
+-- TOP-LEVEL PARSER
+
+
+parser : Parser (Array Inline)
+parser =
+    loop [] (parserLoop [])
+
+
+parserLoop : Array (Parser Inline) -> Array Inline -> Parser (Step (Array Inline) (Array Inline))
+parserLoop customInlineParsers inlineElements =
+    let
+        inline =
+            map
+                (\el ->
+                    [ el
+                    ]
+                        |> (\a -> inlineElements ++ a)
+                        |> Loop
+                )
+
+        lastElement =
+            Array.last inlineElements
+    in
+    Parser.oneOf
+        [ -- Check if we reached the end
+          map (\_ -> Done inlineElements) end
+
+        , -- 
+          backtrackable (inlineCodeParser inlineElements lastElement)
+
+        , -- 
+          inline (backtrackable (emphasisWithUnderscoreParser lastElement))
+        , inline (backtrackable (emphasisWithStarParser lastElement))
+        , inline (backtrackable hardLineBreakParser)
+        , inline (backtrackable imageParser)
+        , inline (backtrackable linkParser)
+
+        , -- 
+          inline (backtrackable (oneOf customInlineParsers))
+
+        , -- 
+          textLoopParser inlineElements lastElement
+        ]
+
+
+
+-- INDIVIDUAL PARSERS
+
+
+emphasisParser : Char -> Int -> Maybe Inline -> Parser Inline
+emphasisParser emphasisChar addToLeftFlank lastElement =
+    let
+        emphasisCharString =
+            String.fromArray
+                [ emphasisChar
+                ]
+
+        flankFromSome s =
+            String.fromArray (Array.pushFirst s.match s.rest)
+
+        originalPrecedingChar =
+            case lastElement of
+                Just (Text t) ->
+                    Array.last (String.toArray t)
+
+                _ ->
+                    Nothing
+    in
+    succeed identity
+        |= lookAhead (specificAmountOf (addToLeftFlank + 1) (specificChar emphasisChar))
+        |> map flankFromSome
+        |> andThen
+                (\flank ->
+                    let
+                        chompUntilNextClosing opts =
+                            succeed identity
+                                |= getChompedString (chompUntil opts.rightFlank)
+                                |> andThen (check opts)
+
+                        check opts additionalEmphasisedText =
+                            let
+                                entireText =
+                                    opts.emphasisedText ++ additionalEmphasisedText
+
+                                chars =
+                                    String.toArray entireText
+
+                                lastCharPrevious =
+                                    if opts.checkOpening then
+                                        originalPrecedingChar
+                                    else
+                                        Array.last (String.toArray opts.emphasisedText)
+                            in
+                            if
+                                -- (1)
+                                opts.checkOpening
+                                    && isOpening
+                                            { precedingChar = originalPrecedingChar
+                                            , followingChar = Array.first chars
+                                            }
+                                    == False
+                            then
+                                problem "Not a viable left flank"
+                            else if opts.nestedChomp then
+                                -- (2)
+                                oneOf
+                                    [ succeed identity
+                                        |. symbol opts.rightFlank
+                                        |> andThen
+                                                (\_ ->
+                                                    chompUntilNextClosing
+                                                        { opts
+                                                            | checkOpening = False
+                                                            , emphasisedText = entireText ++ opts.rightFlank
+                                                            , nestedChomp = False
+                                                            , rightFlank = flank
+                                                        }
+                                                )
+                                        |> backtrackable
+                                    , check
+                                        { opts
+                                            | checkOpening = False
+                                            , emphasisedText = entireText
+                                            , nestedChomp = False
+                                            , rightFlank = flank
+                                        }
+                                        ""
+                                    ]
+                            else
+                                let
+                                    handleClosing maybeAmountOfChars text =
+                                        succeed identity
+                                            |= (case maybeAmountOfChars of
+                                                    Just a ->
+                                                        specificAmountOf a (specificChar emphasisChar)
+
+                                                    Nothing ->
+                                                        some (specificChar emphasisChar)
+                                                )
+                                            |> andThen
+                                                    (\flankChars ->
+                                                        let
+                                                            additionalFlank =
+                                                                flankFromSome flankChars
+
+                                                            extractRightFlank str fl =
+                                                                if String.endsWith emphasisCharString str then
+                                                                    extractRightFlank (String.dropRight 1 str) (fl ++ emphasisCharString)
+                                                                else
+                                                                    { emph = str
+                                                                    , fl = fl
+                                                                    }
+
+                                                            rightFlankExtraction =
+                                                                extractRightFlank chompOpts.emphasisedText additionalFlank
+
+                                                            extractLeftFlank str fl =
+                                                                if String.startsWith emphasisCharString str then
+                                                                    extractLeftFlank (String.dropLeft 1 str) (fl ++ emphasisCharString)
+                                                                else
+                                                                    { emph = str
+                                                                    , fl = fl
+                                                                    }
+
+                                                            leftFlankExtraction =
+                                                                extractLeftFlank rightFlankExtraction.emph opts.rightFlank
+
+                                                            encounteredLeftFlank =
+                                                                leftFlankExtraction.fl
+
+                                                            encounteredRightFlank =
+                                                                rightFlankExtraction.fl
+
+                                                            chompOpts =
+                                                                { opts
+                                                                    | checkOpening = False
+                                                                    , emphasisedText = text
+                                                                    , nestedChomp = False
+                                                                }
+
+                                                            chompOptsWithFlank =
+                                                                { chompOpts | emphasisedText = rightFlankExtraction.emph ++ encounteredRightFlank }
+
+                                                            chompOptsWithFlankNested =
+                                                                { chompOptsWithFlank
+                                                                    | nestedChomp = True
+                                                                    , rightFlank = encounteredRightFlank
+                                                                }
+
+                                                            lookAtClosing emphasisedText =
+                                                                let
+                                                                    lastChar =
+                                                                        Array.last (String.toArray emphasisedText)
+
+                                                                    otherEmphasisCharString =
+                                                                        if emphasisChar == '*' then
+                                                                            "_"
+                                                                        else
+                                                                            "*"
+                                                                in
+                                                                succeed identity
+                                                                    |= oneOf
+                                                                            [ map Just (lookAhead char)
+                                                                            , map (\_ -> Nothing) end
+                                                                            ]
+                                                                    |> andThen
+                                                                            (\followingChar ->
+                                                                                if
+                                                                                    isClosing
+                                                                                        { precedingChar = lastChar
+                                                                                        , followingChar = followingChar
+                                                                                        }
+                                                                                then
+                                                                                    wrapUp entireText
+                                                                                else if
+                                                                                    isOpening
+                                                                                        { precedingChar = lastChar
+                                                                                        , followingChar = followingChar
+                                                                                        }
+                                                                                then
+                                                                                    chompUntilNextClosing chompOptsWithFlankNested
+                                                                                else
+                                                                                    chompUntilNextClosing chompOptsWithFlank
+                                                                            )
+                                                        in
+                                                        if encounteredRightFlank == opts.rightFlank && encounteredLeftFlank == opts.rightFlank then
+                                                            lookAtClosing rightFlankExtraction.emph
+                                                        else
+                                                            oneOf
+                                                                [ chompUntilNextClosing chompOptsWithFlankNested
+                                                                , chompUntilNextClosing chompOptsWithFlank
+
+                                                                , -- 
+                                                                  if flank == additionalFlank then
+                                                                    lookAtClosing rightFlankExtraction.emph
+                                                                  else
+                                                                    problem ""
+                                                                ]
+                                                    )
+                                            |> backtrackable
+
+                                    tryUntilNoClosing r text =
+                                        lookAhead (many (specificChar emphasisChar))
+                                            |> andThen
+                                                    (\emphChars ->
+                                                        let
+                                                            length =
+                                                                Array.length emphChars
+                                                        in
+                                                        if length - r <= 0 then
+                                                            problem ""
+                                                        else if length > String.length opts.rightFlank then
+                                                            oneOf
+                                                                [ succeed identity
+                                                                    |= handleClosing (Just (length - r)) text
+                                                                    |> identity
+                                                                , tryUntilNoClosing (r + 1) text
+                                                                ]
+                                                        else
+                                                            problem ""
+                                                    )
+                                in
+                                -- (3)
+                                oneOf
+                                    [ handleClosing Nothing entireText
+
+                                    , -- 
+                                      if String.startsWith emphasisCharString entireText then
+                                        problem ""
+                                      else if String.contains emphasisCharString entireText then
+                                        succeed identity
+                                            |. specificChar emphasisChar
+                                            |> andThen
+                                                    (\_ ->
+                                                        chompUntilNextClosing
+                                                            { opts
+                                                                | emphasisedText = entireText ++ emphasisCharString
+                                                                , checkOpening = False
+                                                                , nestedChomp = False
+                                                            }
+                                                    )
+                                      else if lastCharPrevious /= Just emphasisChar then
+                                        tryUntilNoClosing 1 entireText
+                                      else
+                                        problem ""
+                                    ]
+
+                        -- --------- --
+                        -- LEFT SIDE --
+                        -- --------- --
+                        isLeftFlank { precedingChar, followingChar } =
+                            let
+                                conditionOne =
+                                    Maybe.unwrap True (not << isUnicodeSpace) followingChar
+
+                                conditionTwoA =
+                                    Maybe.unwrap True (not << isPunctuation) followingChar
+
+                                conditionTwoB =
+                                    Maybe.unwrap False isPunctuation followingChar && Maybe.unwrap True (\c -> isUnicodeSpace c || isPunctuation c) precedingChar
+                            in
+                            conditionOne && (conditionTwoA || conditionTwoB)
+
+                        isOpening opts =
+                            if emphasisChar == '_' then
+                                (&&)
+                                    (isLeftFlank opts)
+                                    (case opts.precedingChar of
+                                        Just c ->
+                                            isUnicodeSpace c || isPunctuation c
+
+                                        Nothing ->
+                                            True
+                                    )
+                            else
+                                isLeftFlank opts
+
+                        -- ---------- --
+                        -- RIGHT SIDE --
+                        -- ---------- --
+                        isRightFlank { precedingChar, followingChar } =
+                            let
+                                conditionOne =
+                                    Maybe.unwrap True (not << isUnicodeSpace) precedingChar
+
+                                conditionTwoA =
+                                    Maybe.unwrap True (not << isPunctuation) precedingChar
+
+                                conditionTwoB =
+                                    Maybe.unwrap False isPunctuation precedingChar && Maybe.unwrap True (\c -> isUnicodeSpace c || isPunctuation c) followingChar
+                            in
+                            conditionOne && (conditionTwoA || conditionTwoB)
+
+                        isClosing opts =
+                            if emphasisChar == '_' then
+                                -- Disallow intraword emphasis when enphasis char is underscore
+                                (&&) (isRightFlank opts) (Maybe.unwrap True (\c -> isUnicodeSpace c || isPunctuation c) opts.followingChar)
+                            else
+                                isRightFlank opts
+
+                        -- ---- --
+                        -- MISC --
+                        -- ---- --
+                        times =
+                            String.length flank
+
+                        wrapUp emphasisedText =
+                            if String.contains "`" emphasisedText then
+                                problem ""
+                            else
+                                case emphasisedText of
+                                    "" ->
+                                        problem "Nothing to emphasise"
+
+                                    _ ->
+                                        let
+                                            parseResult =
+                                                emphasisedText
+                                                    |> parse
+                                                    |> Result.withDefault []
+
+                                            otherEmphasisCharString =
+                                                if emphasisChar == '*' then
+                                                    "_"
+                                                else
+                                                    "*"
+                                        in
+                                        case
+                                            { parseResult = parseResult
+                                            , anyExcessOpeningEmphasis =
+                                                case Array.first parseResult of
+                                                    Just (Text t) ->
+                                                        String.startsWith emphasisCharString t
+
+                                                    _ ->
+                                                        False
+                                            , anyExcessClosingEmphasis =
+                                                case Array.last parseResult of
+                                                    Just (Text t) ->
+                                                        String.endsWith emphasisCharString t
+
+                                                    _ ->
+                                                        False
+                                            }
+                                        of
+                                            { anyExcessOpeningEmphasis = True } ->
+                                                problem ""
+
+                                            { anyExcessClosingEmphasis = True } ->
+                                                problem ""
+
+                                            { parseResult = [ Emphasis nestedOpts nestedContent ] } ->
+                                                if nestedOpts.char == emphasisChar then
+                                                    nestedContent
+                                                        |> Emphasis
+                                                                { char = emphasisChar
+                                                                , times = times + nestedOpts.times
+                                                                }
+                                                        |> succeed
+                                                else
+                                                    parseResult
+                                                        |> Emphasis
+                                                                { char = emphasisChar
+                                                                , times = times
+                                                                }
+                                                        |> succeed
+
+                                            _ ->
+                                                parseResult
+                                                    |> Emphasis
+                                                            { char = emphasisChar
+                                                            , times = times
+                                                            }
+                                                    |> succeed
+                    in
+                    oneOf
+                        [ succeed identity
+                            |. symbol flank
+                            |. lookAhead (chompUntil flank)
+                            |> andThen
+                                    (\_ ->
+                                        chompUntilNextClosing
+                                            { checkOpening = True
+                                            , rightFlank = flank
+                                            , emphasisedText = ""
+                                            , nestedChomp = False
+                                            }
+                                    )
+                            |> backtrackable
+                        , emphasisParser emphasisChar (addToLeftFlank + 1) lastElement
+                        ]
+                )
+
+
+emphasisWithStarParser : Maybe Inline -> Parser Inline
+emphasisWithStarParser =
+    emphasisParser '*' 0
+
+
+emphasisWithUnderscoreParser : Maybe Inline -> Parser Inline
+emphasisWithUnderscoreParser =
+    emphasisParser '_' 0
+
+
+hardLineBreakParser : Parser Inline
+hardLineBreakParser =
+    succeed identity
+        |. specificChar ' '
+        |. specificChar ' '
+        |. many (specificChar ' ')
+        |. specificChar '\n'
+        |> map (\_ -> HardLineBreak)
+
+
+imageParser : Parser Inline
+imageParser =
+    succeed identity
+        |. symbol "!["
+        |= getChompedString (chompUntil "]")
+        |. specificChar ']'
+        |> andThen
+                (\alt ->
+                    -- TODO: Support image titles
+                    succeed identity
+                        |. specificChar '('
+                        |= getChompedString (chompUntil ")")
+                        |. specificChar ')'
+                        |> map
+                                (\url ->
+                                    Image
+                                        { alt = alt
+                                        , url = url
+                                        }
+                                )
+                )
+
+
+inlineCodeParser : Array Inline -> Maybe Inline -> Parser (Step (Array Inline) (Array Inline))
+inlineCodeParser inlineElements lastElement =
+    succeed
+        (\o s ->
+            { opening = o ++ "`" ++ s
+            , closing = s ++ o ++ "`"
+            }
+        )
+        |. specificChar '`'
+        |= getChompedString (chompWhile (\c -> c == '`'))
+        |= oneOf
+                [ getChompedString (symbol " ")
+                , getChompedString (symbol "\n")
+                , succeed ""
+                ]
+        |> andThen
+                (\{ opening, closing } ->
+                    let
+                        chompUntilClosing close code =
+                            succeed identity
+                                |= getChompedString (chompUntilEndOr close)
+                                |. symbol close
+                                |> backtrackable
+                                |> andThen (checkClosing close code)
+
+                        checkClosing close code additionalCode =
+                            let
+                                allCode =
+                                    code ++ additionalCode
+                            in
+                            succeed identity
+                                |= oneOf
+                                        [ map (\_ -> True) (specificChar '`')
+                                        , succeed False
+                                        ]
+                                |> andThen
+                                        (\bool ->
+                                            if bool then
+                                                -- problem "Closing did not match"
+                                                chompUntilClosing close (allCode ++ closing ++ "`")
+                                            else
+                                                succeed allCode
+                                        )
+
+                        addToBlocks code =
+                            let
+                                finalCode =
+                                    code
+                                        |> (\c ->
+                                                if code == "" && String.endsWith " " opening then
+                                                    c ++ " "
+                                                else
+                                                    c
+                                            )
+                                        |> (\c ->
+                                                if code == "" && String.startsWith " " closing then
+                                                    c ++ " "
+                                                else
+                                                    c
+                                            )
+                                        |> String.replace "\n" " "
+                            in
+                            Loop (Array.pushLast (InlineCode finalCode) inlineElements)
+                    in
+                    oneOf
+                        [ -- Either it's actual inline code:
+                          -- (a) with some or no whitespace on both ends
+                          map addToBlocks (chompUntilClosing closing "")
+
+                        , -- (b) with some whitespace at the beginning, but not the end
+                          map (\c -> addToBlocks (" " ++ c)) (chompUntilClosing (String.trimLeft closing) "")
+
+                        , -- Or the opening is text
+                          succeed (textLoop inlineElements lastElement opening)
+                        ]
+                )
+
+
+linkParser : Parser Inline
+linkParser =
+    succeed identity
+        |. specificChar '['
+        |= getChompedString (chompUntil "]")
+        |. specificChar ']'
+        |> andThen
+                (\text ->
+                    if String.contains "`" text then
+                        problem "Inline code has precedence"
+                    else
+                        -- TODO: Support link titles
+                        succeed identity
+                            |. specificChar '('
+                            |= getChompedString (chompUntil ")")
+                            |. specificChar ')'
+                            |> andThen
+                                    (\url ->
+                                        if String.contains "`" url then
+                                            problem "Inline code has precedence"
+                                        else
+                                            { text = text
+                                            , url = url
+                                            }
+                                                |> Link
+                                                |> succeed
+                                    )
+                )
+
+
+{-| Parses one character at a time, so that it can try the other inline parsers
+after each character. Concatenates `Text` automatically.
+-}
+textLoopParser : Array Inline -> Maybe Inline -> Parser (Step (Array Inline) (Array Inline))
+textLoopParser inlineElements lastElement =
+    succeed (textLoop inlineElements lastElement) |= getChompedString chompOne
+
+
+
+-- ㊙️
+
+
+textLoop : Array Inline -> Maybe Inline -> String -> Step (Array Inline) (Array Inline)
+textLoop inlineElements lastElement text =
+    case text of
+        "" ->
+            Done inlineElements
+
+        _ ->
+            case lastElement of
+                Just (Text previousText) ->
+                    Loop (Array.pushLast (Text (previousText ++ text)) (Array.dropLast 1 inlineElements))
+
+                _ ->
+                    Loop (Array.pushLast (Text text) inlineElements)

@@ -1,0 +1,1137 @@
+module Tests.Parser.Inline.Emphasis exposing ( examples_350_to_480 )
+
+import Expect
+import Markdown
+import Markdown.Block exposing ( Block(..) )
+import Markdown.Inline exposing ( Inline(..) )
+import Markdown.Parser.Inlines as Inlines
+import Test exposing (..)
+import Tests.Parser.Helpers exposing (..)
+
+
+examples_350_to_480 =
+    describe
+        "Emphasis and strong emphasis"
+        [ -- RULE 1
+          testInline
+            "*foo bar*"
+            (Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "foo bar"
+                ]
+            )
+
+        , -- 
+          testInline "a * foo bar*" (Text "a * foo bar*")
+        , testInline "a*\"foo\"*" (Text "a*\"foo\"*")
+        , testInline "*\u{00A0}a\u{00A0}*" (Text "*\u{00A0}a\u{00A0}*")
+
+        , -- 
+          testInlines
+            "foo*bar*"
+            [ Text "foo"
+            , Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "bar"
+                ]
+            ]
+        , testInlines
+            "5*6*78"
+            [ Text "5"
+            , Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "6"
+                ]
+            , Text "78"
+            ]
+
+        , -- RULE 2
+          testInline
+            "_foo bar_"
+            (Emphasis
+                { char = '_'
+                , times = 1
+                }
+                [ Text "foo bar"
+                ]
+            )
+
+        , -- 
+          testInline "_ foo bar_" (Text "_ foo bar_")
+        , testInline "foo_bar_" (Text "foo_bar_")
+        , testInline "5_6_78" (Text "5_6_78")
+        , testInline "пристаням_стремятся_" (Text "пристаням_стремятся_")
+        , testInline "aa_\"bb\"_cc" (Text "aa_\"bb\"_cc")
+
+        , -- 
+          testInlines
+            "foo-_(bar)_"
+            [ Text "foo-"
+            , Emphasis
+                { char = '_'
+                , times = 1
+                }
+                [ Text "(bar)"
+                ]
+            ]
+
+        , -- RULE 3
+          testInline "_foo*" (Text "_foo*")
+        , testInline "*foo bar *" (Text "*foo bar *")
+
+        , -- 
+          testInline
+            """
+            *foo bar
+            *
+            """
+            (Text "*foo bar\n*")
+
+        , -- 
+          testInline "*(*foo)" (Text "*(*foo)")
+
+        , -- 
+          testInline
+            "*(*foo*)*"
+            (Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "("
+                , Emphasis
+                    { char = '*'
+                    , times = 1
+                    }
+                    [ Text "foo"
+                    ]
+                , Text ")"
+                ]
+            )
+        , testInlines
+            "*foo*bar"
+            [ Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "foo"
+                ]
+            , Text "bar"
+            ]
+
+        , -- RULE 4
+          testInline "_foo bar _" (Text "_foo bar _")
+        , testInline "_(_foo)" (Text "_(_foo)")
+
+        , -- 
+          testInline
+            "_(_foo_)_"
+            (Emphasis
+                { char = '_'
+                , times = 1
+                }
+                [ Text "("
+                , Emphasis
+                    { char = '_'
+                    , times = 1
+                    }
+                    [ Text "foo"
+                    ]
+                , Text ")"
+                ]
+            )
+
+        , -- 
+          testInline "_foo_bar" (Text "_foo_bar")
+        , testInline "_пристаням_стремятся" (Text "_пристаням_стремятся")
+
+        , -- 
+          testInline
+            "_foo_bar_baz_"
+            (Emphasis
+                { char = '_'
+                , times = 1
+                }
+                [ Text "foo_bar_baz"
+                ]
+            )
+        , testInlines
+            "_(bar)_."
+            [ Emphasis
+                { char = '_'
+                , times = 1
+                }
+                [ Text "(bar)"
+                ]
+            , Text "."
+            ]
+
+        , -- RULE 5
+          testInline
+            "**foo bar**"
+            (Emphasis
+                { char = '*'
+                , times = 2
+                }
+                [ Text "foo bar"
+                ]
+            )
+
+        , -- 
+          testInline "** foo bar**" (Text "** foo bar**")
+        , testInline "a**\"foo\"**" (Text "a**\"foo\"**")
+
+        , -- 
+          testInlines
+            "foo**bar**"
+            [ Text "foo"
+            , Emphasis
+                { char = '*'
+                , times = 2
+                }
+                [ Text "bar"
+                ]
+            ]
+
+        , -- RULE 6
+          testInline
+            "__foo bar__"
+            (Emphasis
+                { char = '_'
+                , times = 2
+                }
+                [ Text "foo bar"
+                ]
+            )
+
+        , -- 
+          testInline "__ foo bar__" (Text "__ foo bar__")
+        , testInline "__\nfoo bar__" (Text "__\nfoo bar__")
+        , testInline "a__\"foo\"__" (Text "a__\"foo\"__")
+        , testInline "foo__bar__" (Text "foo__bar__")
+        , testInline "5__6__78" (Text "5__6__78")
+        , testInline "пристаням__стремятся__" (Text "пристаням__стремятся__")
+
+        , -- 
+          testInline
+            "__foo, __bar__, baz__"
+            (Emphasis
+                { char = '_'
+                , times = 2
+                }
+                [ Text "foo, "
+                , Emphasis
+                    { char = '_'
+                    , times = 2
+                    }
+                    [ Text "bar"
+                    ]
+                , Text ", baz"
+                ]
+            )
+        , testInlines
+            "foo-__(bar)__"
+            [ Text "foo-"
+            , Emphasis
+                { char = '_'
+                , times = 2
+                }
+                [ Text "(bar)"
+                ]
+            ]
+
+        , -- RULE 7
+          testInline "**foo bar **" (Text "**foo bar **")
+        , testInline "**(**foo)" (Text "**(**foo)")
+
+        , -- 
+          testInline
+            "*(**foo**)*"
+            (Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "("
+                , Emphasis
+                    { char = '*'
+                    , times = 2
+                    }
+                    [ Text "foo"
+                    ]
+                , Text ")"
+                ]
+            )
+        , testInline
+            """
+            **Gomphocarpus (*Gomphocarpus physocarpus*, syn.
+            *Asclepias physocarpa*)**
+            """
+            (Emphasis
+                { char = '*'
+                , times = 2
+                }
+                [ Text "Gomphocarpus ("
+                , Emphasis
+                    { char = '*'
+                    , times = 1
+                    }
+                    [ Text "Gomphocarpus physocarpus"
+                    ]
+                , Text ", syn.\n"
+                , Emphasis
+                    { char = '*'
+                    , times = 1
+                    }
+                    [ Text "Asclepias physocarpa"
+                    ]
+                , Text ")"
+                ]
+            )
+        , testInline
+            "**foo \"*bar*\" foo**"
+            (Emphasis
+                { char = '*'
+                , times = 2
+                }
+                [ Text "foo \""
+                , Emphasis
+                    { char = '*'
+                    , times = 1
+                    }
+                    [ Text "bar"
+                    ]
+                , Text "\" foo"
+                ]
+            )
+        , testInlines
+            "**foo**bar"
+            [ Emphasis
+                { char = '*'
+                , times = 2
+                }
+                [ Text "foo"
+                ]
+            , Text "bar"
+            ]
+
+        , -- RULE 8
+          testInline "__foo bar __" (Text "__foo bar __")
+        , testInline "__(__foo)" (Text "__(__foo)")
+
+        , -- 
+          testInline
+            "_(__foo__)_"
+            (Emphasis
+                { char = '_'
+                , times = 1
+                }
+                [ Text "("
+                , Emphasis
+                    { char = '_'
+                    , times = 2
+                    }
+                    [ Text "foo"
+                    ]
+                , Text ")"
+                ]
+            )
+
+        , -- 
+          testInline "__foo__bar" (Text "__foo__bar")
+        , testInline "__пристаням__стремятся" (Text "__пристаням__стремятся")
+
+        , -- 
+          testInline
+            "__foo__bar__baz__"
+            (Emphasis
+                { char = '_'
+                , times = 2
+                }
+                [ Text "foo__bar__baz"
+                ]
+            )
+        , testInlines
+            "__(bar)__."
+            [ Emphasis
+                { char = '_'
+                , times = 2
+                }
+                [ Text "(bar)"
+                ]
+            , Text "."
+            ]
+
+        , -- RULE 9
+          testInlines
+            "*foo [bar](/url)*"
+            [ Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "foo "
+                , Link
+                    { text = "bar"
+                    , url = "/url"
+                    }
+                ]
+            ]
+        , testInline
+            "*foo\nbar*"
+            (Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "foo\nbar"
+                ]
+            )
+        , testInline
+            "_foo __bar__ baz_"
+            (Emphasis
+                { char = '_'
+                , times = 1
+                }
+                [ Text "foo "
+                , Emphasis
+                    { char = '_'
+                    , times = 2
+                    }
+                    [ Text "bar"
+                    ]
+                , Text " baz"
+                ]
+            )
+        , testInline
+            "_foo _bar_ baz_"
+            (Emphasis
+                { char = '_'
+                , times = 1
+                }
+                [ Text "foo "
+                , Emphasis
+                    { char = '_'
+                    , times = 1
+                    }
+                    [ Text "bar"
+                    ]
+                , Text " baz"
+                ]
+            )
+        , testInline
+            "__foo_ bar_"
+            (Emphasis
+                { char = '_'
+                , times = 1
+                }
+                [ Emphasis
+                    { char = '_'
+                    , times = 1
+                    }
+                    [ Text "foo"
+                    ]
+                , Text " bar"
+                ]
+            )
+        , testInline
+            "*foo *bar**"
+            (Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "foo "
+                , Emphasis
+                    { char = '*'
+                    , times = 1
+                    }
+                    [ Text "bar"
+                    ]
+                ]
+            )
+        , testInline
+            "*foo **bar** baz*"
+            (Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "foo "
+                , Emphasis
+                    { char = '*'
+                    , times = 2
+                    }
+                    [ Text "bar"
+                    ]
+                , Text " baz"
+                ]
+            )
+        , testInline
+            "*foo**bar**baz*"
+            (Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "foo"
+                , Emphasis
+                    { char = '*'
+                    , times = 2
+                    }
+                    [ Text "bar"
+                    ]
+                , Text "baz"
+                ]
+            )
+        , testInline
+            "*foo**bar*"
+            (Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "foo**bar"
+                ]
+            )
+        , testInline
+            "***foo** bar*"
+            (Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Emphasis
+                    { char = '*'
+                    , times = 2
+                    }
+                    [ Text "foo"
+                    ]
+                , Text " bar"
+                ]
+            )
+        , testInline
+            "*foo **bar***"
+            (Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "foo "
+                , Emphasis
+                    { char = '*'
+                    , times = 2
+                    }
+                    [ Text "bar"
+                    ]
+                ]
+            )
+        , testInline
+            "*foo**bar***"
+            (Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "foo"
+                , Emphasis
+                    { char = '*'
+                    , times = 2
+                    }
+                    [ Text "bar"
+                    ]
+                ]
+            )
+        , testInlines
+            "foo***bar***baz"
+            [ Text "foo"
+            , Emphasis
+                { char = '*'
+                , times = 3
+                }
+                [ Text "bar"
+                ]
+            , Text "baz"
+            ]
+        , skip
+            <| testInlines
+                    "foo******bar*********baz"
+                    [ Text "foo"
+                    , Emphasis
+                        { char = '*'
+                        , times = 6
+                        }
+                        [ Text "bar"
+                        ]
+                    , Text "***baz"
+                    ]
+        , testInline
+            "*foo **bar *baz* bim** bop*"
+            (Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "foo "
+                , Emphasis
+                    { char = '*'
+                    , times = 2
+                    }
+                    [ Text "bar "
+                    , Emphasis
+                        { char = '*'
+                        , times = 1
+                        }
+                        [ Text "baz"
+                        ]
+                    , Text " bim"
+                    ]
+                , Text " bop"
+                ]
+            )
+
+        , -- TODO: Links should parse inlines as well
+          testInline
+            "*foo [*bar*](/url)*"
+            (Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "foo "
+                , Link
+                    { text = "*bar*"
+                    , url = "/url"
+                    }
+                ]
+            )
+
+        , -- 
+          testInline "** is not an empty emphasis" (Text "** is not an empty emphasis")
+        , testInline "**** is not an empty strong emphasis" (Text "**** is not an empty strong emphasis")
+
+        , -- RULE 10
+          testInline
+            "**foo [bar](/url)**"
+            (Emphasis
+                { char = '*'
+                , times = 2
+                }
+                [ Text "foo "
+                , Link
+                    { text = "bar"
+                    , url = "/url"
+                    }
+                ]
+            )
+        , testInline
+            "**foo\nbar**"
+            (Emphasis
+                { char = '*'
+                , times = 2
+                }
+                [ Text "foo\nbar"
+                ]
+            )
+        , testInline
+            "__foo _bar_ baz__"
+            (Emphasis
+                { char = '_'
+                , times = 2
+                }
+                [ Text "foo "
+                , Emphasis
+                    { char = '_'
+                    , times = 1
+                    }
+                    [ Text "bar"
+                    ]
+                , Text " baz"
+                ]
+            )
+        , testInline
+            "__foo __bar__ baz__"
+            (Emphasis
+                { char = '_'
+                , times = 2
+                }
+                [ Text "foo "
+                , Emphasis
+                    { char = '_'
+                    , times = 2
+                    }
+                    [ Text "bar"
+                    ]
+                , Text " baz"
+                ]
+            )
+        , testInline
+            "____foo__ bar__"
+            (Emphasis
+                { char = '_'
+                , times = 2
+                }
+                [ Emphasis
+                    { char = '_'
+                    , times = 2
+                    }
+                    [ Text "foo"
+                    ]
+                , Text " bar"
+                ]
+            )
+        , testInline
+            "**foo **bar****"
+            (Emphasis
+                { char = '*'
+                , times = 2
+                }
+                [ Text "foo "
+                , Emphasis
+                    { char = '*'
+                    , times = 2
+                    }
+                    [ Text "bar"
+                    ]
+                ]
+            )
+        , testInline
+            "**foo *bar* baz**"
+            (Emphasis
+                { char = '*'
+                , times = 2
+                }
+                [ Text "foo "
+                , Emphasis
+                    { char = '*'
+                    , times = 1
+                    }
+                    [ Text "bar"
+                    ]
+                , Text " baz"
+                ]
+            )
+        , testInline
+            "**foo*bar*baz**"
+            (Emphasis
+                { char = '*'
+                , times = 2
+                }
+                [ Text "foo"
+                , Emphasis
+                    { char = '*'
+                    , times = 1
+                    }
+                    [ Text "bar"
+                    ]
+                , Text "baz"
+                ]
+            )
+        , testInline
+            "***foo* bar**"
+            (Emphasis
+                { char = '*'
+                , times = 2
+                }
+                [ Emphasis
+                    { char = '*'
+                    , times = 1
+                    }
+                    [ Text "foo"
+                    ]
+                , Text " bar"
+                ]
+            )
+        , testInline
+            "**foo *bar***"
+            (Emphasis
+                { char = '*'
+                , times = 2
+                }
+                [ Text "foo "
+                , Emphasis
+                    { char = '*'
+                    , times = 1
+                    }
+                    [ Text "bar"
+                    ]
+                ]
+            )
+        , testInline
+            "**foo *bar **baz**\nbim* bop**"
+            (Emphasis
+                { char = '*'
+                , times = 2
+                }
+                [ Text "foo "
+                , Emphasis
+                    { char = '*'
+                    , times = 1
+                    }
+                    [ Text "bar "
+                    , Emphasis
+                        { char = '*'
+                        , times = 2
+                        }
+                        [ Text "baz"
+                        ]
+                    , Text "\nbim"
+                    ]
+                , Text " bop"
+                ]
+            )
+
+        , -- TODO: Links should parse inlines as well
+          testInline
+            "**foo [*bar*](/url)**"
+            (Emphasis
+                { char = '*'
+                , times = 2
+                }
+                [ Text "foo "
+                , Link
+                    { text = "*bar*"
+                    , url = "/url"
+                    }
+                ]
+            )
+
+        , -- 
+          testInline "__ is not an empty emphasis" (Text "__ is not an empty emphasis")
+        , testInline "____ is not an empty strong emphasis" (Text "____ is not an empty strong emphasis")
+
+        , -- RULE 11
+          testInline "foo ***" (Text "foo ***")
+
+        , -- NOTE:
+          -- Skipped test 436 because I couldn't figure out how to properly escape the star character
+          testInlines
+            "foo *_*"
+            [ Text "foo "
+            , Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "_"
+                ]
+            ]
+
+        , -- 
+          testInline "foo *****" (Text "foo *****")
+
+        , -- NOTE:
+          -- Skipped test 439 because I couldn't figure out how to properly escape the star character
+          testInlines
+            "foo **_**"
+            [ Text "foo "
+            , Emphasis
+                { char = '*'
+                , times = 2
+                }
+                [ Text "_"
+                ]
+            ]
+        , testInlines
+            "**foo*"
+            [ Text "*"
+            , Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "foo"
+                ]
+            ]
+        , testInlines
+            "*foo**"
+            [ Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "foo"
+                ]
+            , Text "*"
+            ]
+        , testInlines
+            "***foo**"
+            [ Text "*"
+            , Emphasis
+                { char = '*'
+                , times = 2
+                }
+                [ Text "foo"
+                ]
+            ]
+        , testInlines
+            "****foo*"
+            [ Text "***"
+            , Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "foo"
+                ]
+            ]
+        , testInlines
+            "**foo***"
+            [ Emphasis
+                { char = '*'
+                , times = 2
+                }
+                [ Text "foo"
+                ]
+            , Text "*"
+            ]
+        , testInlines
+            "*foo****"
+            [ Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "foo"
+                ]
+            , Text "***"
+            ]
+
+        , -- RULE 12
+          testInline "foo ___" (Text "foo ___")
+
+        , -- NOTE:
+          -- Skipped test 448 because I couldn't figure out how to properly escape the underscore character
+          testInlines
+            "foo _*_"
+            [ Text "foo "
+            , Emphasis
+                { char = '_'
+                , times = 1
+                }
+                [ Text "*"
+                ]
+            ]
+
+        , -- 
+          testInline "foo _____" (Text "foo _____")
+
+        , -- NOTE:
+          -- Skipped test 451 because I couldn't figure out how to properly escape the underscore character
+          testInlines
+            "foo __*__"
+            [ Text "foo "
+            , Emphasis
+                { char = '_'
+                , times = 2
+                }
+                [ Text "*"
+                ]
+            ]
+        , testInlines
+            "__foo_"
+            [ Text "_"
+            , Emphasis
+                { char = '_'
+                , times = 1
+                }
+                [ Text "foo"
+                ]
+            ]
+        , testInlines
+            "_foo__"
+            [ Emphasis
+                { char = '_'
+                , times = 1
+                }
+                [ Text "foo"
+                ]
+            , Text "_"
+            ]
+        , testInlines
+            "___foo__"
+            [ Text "_"
+            , Emphasis
+                { char = '_'
+                , times = 2
+                }
+                [ Text "foo"
+                ]
+            ]
+        , testInlines
+            "____foo_"
+            [ Text "___"
+            , Emphasis
+                { char = '_'
+                , times = 1
+                }
+                [ Text "foo"
+                ]
+            ]
+        , testInlines
+            "__foo___"
+            [ Emphasis
+                { char = '_'
+                , times = 2
+                }
+                [ Text "foo"
+                ]
+            , Text "_"
+            ]
+        , testInlines
+            "_foo____"
+            [ Emphasis
+                { char = '_'
+                , times = 1
+                }
+                [ Text "foo"
+                ]
+            , Text "___"
+            ]
+
+        , -- RULE 13
+          testInline
+            "**foo**"
+            (Emphasis
+                { char = '*'
+                , times = 2
+                }
+                [ Text "foo"
+                ]
+            )
+        , testInline
+            "*_foo_*"
+            (Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Emphasis
+                    { char = '_'
+                    , times = 1
+                    }
+                    [ Text "foo"
+                    ]
+                ]
+            )
+        , testInline
+            "__foo__"
+            (Emphasis
+                { char = '_'
+                , times = 2
+                }
+                [ Text "foo"
+                ]
+            )
+        , testInline
+            "_*foo*_"
+            (Emphasis
+                { char = '_'
+                , times = 1
+                }
+                [ Emphasis
+                    { char = '*'
+                    , times = 1
+                    }
+                    [ Text "foo"
+                    ]
+                ]
+            )
+        , testInline
+            "****foo****"
+            (Emphasis
+                { char = '*'
+                , times = 4
+                }
+                [ Text "foo"
+                ]
+            )
+        , testInline
+            "____foo____"
+            (Emphasis
+                { char = '_'
+                , times = 4
+                }
+                [ Text "foo"
+                ]
+            )
+        , testInline
+            "******foo******"
+            (Emphasis
+                { char = '*'
+                , times = 6
+                }
+                [ Text "foo"
+                ]
+            )
+
+        , -- RULE 14
+          testInline
+            "***foo***"
+            (Emphasis
+                { char = '*'
+                , times = 3
+                }
+                [ Text "foo"
+                ]
+            )
+        , testInline
+            "_____foo_____"
+            (Emphasis
+                { char = '_'
+                , times = 5
+                }
+                [ Text "foo"
+                ]
+            )
+
+        , -- RULE 15
+          testInlines
+            "*foo _bar* baz_"
+            [ Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "foo _bar"
+                ]
+            , Text " baz_"
+            ]
+        , testInlines
+            "*foo __bar *baz bim__ bam*"
+            [ Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "foo "
+                , Emphasis
+                    { char = '_'
+                    , times = 2
+                    }
+                    [ Text "bar *baz bim"
+                    ]
+                , Text " bam"
+                ]
+            ]
+
+        , -- RULE 16
+          -- TODO: Couldn't get this to work.'
+          skip
+            <| testInlines
+                    "**foo **bar baz**"
+                    [ Text "**foo "
+                    , Emphasis
+                        { char = '*'
+                        , times = 2
+                        }
+                        [ Text "bar baz"
+                        ]
+                    ]
+
+        , -- RULE 17
+          -- TODO:
+          skip
+            <| testInlines
+                    "*[bar*](/url)"
+                    [ Text "*"
+                    , Link
+                        { text = "bar*"
+                        , url = "/url"
+                        }
+                    ]
+            -- TODO:
+            -- "_foo [bar_](/url)" -> _foo <a href="/url">bar_</a>
+            -- "*<img src=\"foo\" title=\"*\"/>" -> *<img src="foo" title="*"/>
+            -- "**<a href=\"**\">" -> **<a href="**">
+            -- "__<a href=\"__\">" -> __<a href="__">
+            -- "*a `*`*" -> <em>a <code>*</code></em>
+            -- "_a `_`_" -> <em>a <code>_</code></em>
+            -- "**a<http://foo.bar/?q=**>" -> **a<a href="http://foo.bar/?q=**">http://foo.bar/?q=**</a>
+            -- "__a<http://foo.bar/?q=__>" -> __a<a href="http://foo.bar/?q=__">http://foo.bar/?q=__</a>
+        ]

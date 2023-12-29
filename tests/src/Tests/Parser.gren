@@ -1,0 +1,52 @@
+module Tests.Parser exposing ( tests )
+
+{-|
+
+These tests match the code presented in the spec:
+https://spec.commonmark.org/0.30/#inlines
+
+The tests should be in the same order as in the spec.
+
+-}
+
+import Expect
+import Markdown
+import Markdown.Block exposing ( Block(..) )
+import Markdown.Inline exposing ( Inline(..) )
+import Markdown.Parser.Inlines as Inlines
+import Test exposing (..)
+import Tests.Parser.Blocks.Paragraph
+import Tests.Parser.Inline.Codespan
+import Tests.Parser.Inline.Emphasis
+
+
+
+-- TESTS
+
+
+tests =
+    Test.concat
+        [ blocks
+        , inlines
+        ]
+
+
+
+-- BLOCKS
+
+
+blocks =
+    Test.concat
+        [ Tests.Parser.Blocks.Paragraph.examples_219_to_226
+        ]
+
+
+
+-- INLINES
+
+
+inlines =
+    Test.concat
+        [ Tests.Parser.Inline.Codespan.examples_328_to_349
+        , Tests.Parser.Inline.Emphasis.examples_350_to_480
+        ]

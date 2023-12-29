@@ -1,0 +1,371 @@
+module Parser.Extra exposing (..)
+
+{-| With code from https://package.elm-lang.org/packages/pithub/elm-parser-extra/1.0.0/
+
+-}
+
+import Parser exposing (..)
+import Parser.Advanced as Advanced
+import Parser.Advanced.Extra as AdvancedExtra
+
+
+
+-- 🌳
+
+
+{-| Result of [`Parser.run`](https://package.elm-lang.org/packages/elm/parser/latest/Parser#run).
+The type alias simplifies the following function signatures a little bit.
+-}
+type alias ParserResult a =
+    Result (Array Parser.DeadEnd) a
+
+
+
+-- 🏔️
+
+
+isLineEnding c =
+    c == '\n' || c == '\r'
+
+
+isPunctuation c =
+    let
+        code =
+            Char.toCode c
+    in
+    (code >= 33 && code <= 47) || (code >= 58 && code <= 64) || (code >= 91 && code <= 96) || (code >= 123 && code <= 126)
+
+
+isSpace c =
+    c == ' '
+
+
+isTab c =
+    c == '\t'
+
+
+isUnicodeSpace c =
+    let
+        code =
+            Char.toCode c
+    in
+    isSpace c || isLineEnding c || isTab c || code == 12 || code == 160 || code == 5760 || (code >= 8192 && code <= 8202) || code == 8239 || code == 8287 || code == 12288
+
+
+
+-- 🛠️
+
+
+char : Parser Char
+char =
+    chompOne
+        |> getChompedString
+        |> map (String.toArray >> Array.first >> Maybe.withDefault ' ')
+
+
+chompIfChar : Char -> Parser {}
+chompIfChar c =
+    chompIf (\a -> a == c)
+
+
+chompOne : Parser {}
+chompOne =
+    chompIf (always True)
+
+
+chompOneOrMore : (Char -> Bool) -> Parser {}
+chompOneOrMore predicate =
+    chompIf predicate |. chompWhile predicate
+
+
+{-| The opposite of [`backtrackable`](https://package.elm-lang.org/packages/elm/parser/latest/Parser#backtrackable).
+The parser is made _not_ backtrackable, a.k.a. "committed".
+
+It's implemented as:
+
+    committed : Parser a -> Parser a
+    committed parser =
+        Parser.commit ()
+            |> followedBy parser
+
+-}
+committed : Parser a -> Parser a
+committed =
+    AdvancedExtra.committed
+
+
+{-| Executes two parsers in sequence, discarding the first result.
+
+Note that the arguments are flipped to make the function easily
+usable with the forward pipe operator:
+
+    import Parser exposing (Parser)
+
+    testParser : Parser Int
+    testParser =
+        Parser.token "> "
+            |> followedBy Parser.int
+
+    Parser.run testParser "> 123"
+    --> Ok 123
+
+-}
+followedBy : Parser b -> Parser a -> Parser b
+followedBy =
+    AdvancedExtra.followedBy
+
+
+{-| Gets the result of running the given parser at the current position.
+
+**Note:** the test run has absolutely **no effect** on the current parser state!
+
+-}
+getParserResult : Parser a -> Parser (ParserResult a)
+getParserResult parser =
+    parser
+        |> AdvancedExtra.getParserResult
+        |> Parser.map (Result.mapError (Array.map problemToDeadEnd))
+
+
+{-| A parser that succeeds if the given parser succeeds at the current position
+and fails otherwise. The difference to using the original parser is that this
+parser doesn't chomp any characters and is always backtrackable.
+
+-}
+lookAhead : Parser a -> Parser a
+lookAhead =
+    AdvancedExtra.lookAhead
+
+
+many : Parser a -> Parser (Array a)
+many p =
+    loop [] (manyHelp p)
+
+
+{-| A parser that succeeds if the given parser fails at the current position
+and fails with the given problem message otherwise.
+This parser doesn't chomp any characters and is always backtrackable.
+
+-}
+negativeLookAhead : String -> Parser a -> Parser {}
+negativeLookAhead msg =
+    AdvancedExtra.negativeLookAhead (Parser.Problem msg)
+
+
+notMoreThanXSpaces : Int -> Parser (Array Char)
+notMoreThanXSpaces n =
+    succeed identity
+        |= many (specificChar ' ')
+        |> andThen
+                (\spaces ->
+                    if Array.length spaces > n then
+                        problem ("Encountered more than " ++ String.fromInt n ++ " spaces")
+                    else
+                        succeed spaces
+                )
+
+
+some :
+    Parser a
+    -> Parser
+        { match : a
+        , rest : Array a
+        }
+some p =
+    succeed
+        (\a b ->
+            { match = a
+            , rest = b
+            }
+        )
+        |= p
+        |= many p
+
+
+specificAmountOf :
+    Int
+    -> Parser a
+    -> Parser
+        { match : a
+        , rest : Array a
+        }
+specificAmountOf amount parser =
+    if amount < 1 then
+        problem "Can\'t parse an amount less than 1"
+    else
+        let
+            helper x p =
+                if x < 1 then
+                    p
+                else
+                    p
+                        |> andThen (\a -> map (\v -> Array.pushLast v a) parser)
+                        |> helper (x - 1)
+        in
+        succeed identity
+            |= parser
+            |> map Array.singleton
+            |> helper (amount - 1)
+            |> map Array.popFirst
+            |> map
+                    (Maybe.map
+                        (\{ first, rest } ->
+                            { match = first
+                            , rest = rest
+                            }
+                        )
+                    )
+            |> andThen
+                    (\maybe ->
+                        case maybe of
+                            Just x ->
+                                succeed x
+
+                            Nothing ->
+                                problem "No matches"
+                    )
+
+
+specificChar : Char -> Parser Char
+specificChar c =
+    map (\_ -> c) (chompIfChar c)
+
+
+
+-- BINDS
+
+
+{-| Flipped version of [`andThen`](https://package.elm-lang.org/packages/elm/parser/latest/Parser#andThen).
+
+If you use `andThen` without the forward pipe operator,
+this can save some parentheses and an extra level of indenting.
+
+    andThen:
+
+        parser
+            |> andThen
+                (\value ->
+                    ...
+                )
+
+    bind:
+
+        bind parser <|
+            \value ->
+                ...
+
+-}
+bind : Parser a -> (a -> Parser b) -> Parser b
+bind =
+    AdvancedExtra.bind
+
+
+{-| Runs the 2 parsers one after the other and then calls the callback
+function with the 2 parsed values.
+
+Stops at the first failure.
+
+This can be handy if you need to independently parse 2 values and then
+process them together. It reduces the indentation of the code:
+
+    andThen:
+
+        getSource
+            |> andThen
+                (\source ->
+                    getOffset
+                        |> andThen
+                            (\offset ->
+                                ...
+                            )
+                )
+
+    bind:
+
+        bind getSource <|
+            \source ->
+                bind getOffset <|
+                    \offset ->
+                        ...
+
+    bind2:
+
+        bind2 getSource getOffset <|
+            \source offset ->
+                ...
+
+-}
+bind2 : Parser a1 -> Parser a2 -> (a1 -> a2 -> Parser b) -> Parser b
+bind2 =
+    AdvancedExtra.bind2
+
+
+{-| Runs the 3 parsers one after the other and then calls the callback
+function with the 3 parsed values.
+
+Stops at the first failure.
+
+This can be handy if you need to independently parse 3 values and then
+process them together. It reduces the indentation of the code.
+For an example with 2 parsers see [`bind2`](#bind2).
+
+-}
+bind3 : Parser a1 -> Parser a2 -> Parser a3 -> (a1 -> a2 -> a3 -> Parser b) -> Parser b
+bind3 =
+    AdvancedExtra.bind3
+
+
+{-| Runs the 4 parsers one after the other and then calls the callback
+function with the 4 parsed values.
+
+Stops at the first failure.
+
+This can be handy if you need to independently parse 4 values and then
+process them together. It reduces the indentation of the code.
+For an example with 2 parsers see [`bind2`](#bind2).
+
+-}
+bind4 : Parser a1 -> Parser a2 -> Parser a3 -> Parser a4 -> (a1 -> a2 -> a3 -> a4 -> Parser b) -> Parser b
+bind4 =
+    AdvancedExtra.bind4
+
+
+{-| Runs the 5 parsers one after the other and then calls the callback
+function with the 5 parsed values.
+
+Stops at the first failure.
+
+This can be handy if you need to independently parse 5 values and then
+process them together. It reduces the indentation of the code.
+For an example with 2 parsers see [`bind2`](#bind2).
+
+-}
+bind5 : Parser a1 -> Parser a2 -> Parser a3 -> Parser a4 -> Parser a5 -> (a1 -> a2 -> a3 -> a4 -> a5 -> Parser b) -> Parser b
+bind5 =
+    AdvancedExtra.bind5
+
+
+
+-- ㊙️
+
+
+manyHelp : Parser a -> Array a -> Parser (Step (Array a) (Array a))
+manyHelp p vs =
+    oneOf
+        [ succeed
+            (\v ->
+                vs
+                    |> Array.pushLast v
+                    |> Loop
+            )
+            |= p
+        , succeed (Done vs)
+        ]
+
+
+problemToDeadEnd : Advanced.DeadEnd Never Parser.Problem -> Parser.DeadEnd
+problemToDeadEnd p =
+    { row = p.row
+    , col = p.col
+    , problem = p.problem
+    }

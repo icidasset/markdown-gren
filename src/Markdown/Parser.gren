@@ -1,0 +1,46 @@
+module Markdown.Parser exposing (..)
+
+{-|-}
+
+import Json.Decode as Json
+import Markdown.Block exposing ( Block )
+import Markdown.Parser.Blocks
+import Markdown.Parser.Frontmatter.Json
+import Markdown.Parser.Frontmatter.Types as Frontmatter
+import Parser exposing ( Parser )
+
+
+
+-- 🛠️
+
+
+jsonFrontmatter : Json.Decoder metadata -> Frontmatter.Parser metadata
+jsonFrontmatter =
+    Markdown.Parser.Frontmatter.Json.parser
+
+
+parse :
+    { frontmatter : Maybe (Frontmatter.Parser metadata)
+    }
+    -> String
+    -> { metadata : Maybe metadata
+       , blocks : Array Block
+       }
+parse opts string =
+    let
+        frontmatterResult =
+            opts.frontmatter
+                |> Maybe.map (\parser -> Parser.run parser string)
+                |> Maybe.andThen Result.toMaybe
+
+        blocksString =
+            case frontmatterResult of
+                Just { markdown } ->
+                    markdown
+
+                Nothing ->
+                    string
+    in
+    { metadata = Maybe.andThen .metadata frontmatterResult
+    , blocks = Result.withDefault [] (Markdown.Parser.Blocks.parse blocksString)
+    }

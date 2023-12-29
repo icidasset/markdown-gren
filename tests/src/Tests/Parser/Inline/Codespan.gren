@@ -1,0 +1,90 @@
+module Tests.Parser.Inline.Codespan exposing ( examples_328_to_349 )
+
+import Expect
+import Markdown
+import Markdown.Block exposing ( Block(..) )
+import Markdown.Inline exposing ( Inline(..) )
+import Markdown.Parser.Inlines as Inlines
+import Test exposing (..)
+import Tests.Parser.Helpers exposing (..)
+
+
+examples_328_to_349 =
+    describe
+        "Code spans"
+        [ testInline "`foo`" (InlineCode "foo")
+        , testInline "`` foo ` bar ``" (InlineCode "foo ` bar")
+        , testInline "` `` `" (InlineCode "``")
+        , testInline "`  ``  `" (InlineCode " `` ")
+        , testInline "` a`" (InlineCode " a")
+        , testInline "`\u{00A0}b\u{00A0}`" (InlineCode "\u{00A0}b\u{00A0}")
+        , testInline "` `" (InlineCode " ")
+        , testInline "`  `" (InlineCode "  ")
+
+        , -- 
+          testInline
+            """
+            ``
+            foo
+            bar\u{0020}\u{0020}
+            baz
+            ``
+            """
+            (InlineCode "foo bar   baz")
+        , testInline
+            """
+            ``
+            foo\u{0020}
+            ``
+            """
+            (InlineCode "foo ")
+        , testInline
+            """
+            `foo   bar\u{0020}
+            baz`
+            """
+            (InlineCode "foo   bar  baz")
+        , testInlines
+            "`foo\\`bar`"
+            [ InlineCode "foo\\"
+            , Text "bar`"
+            ]
+
+        , -- 
+          testInline "``foo`bar``" (InlineCode "foo`bar")
+        , testInline "` foo `` bar `" (InlineCode "foo `` bar")
+
+        , -- 
+          testInlines
+            "*foo`*`"
+            [ Text "*foo"
+            , InlineCode "*"
+            ]
+        , testInlines
+            "[not a `link](/foo`)"
+            [ Text "[not a "
+            , InlineCode "link](/foo"
+            , Text ")"
+            ]
+
+        , -- TODO: Still need to implement HTML parsing.
+          --       Some `Inline` elements may need to be replaced by a `Html` inline element here.
+          skip (testInline "`<a href=\"`\">`" (InlineCode "<a href=\"`\">"))
+        , skip (testInline "<a href=\"`\">`" (Text "<a href=\"`\">`"))
+
+        , -- TODO: Still need to implement autolinks.
+          --       Some `Inline` elements may need to be replaced by a `AutoLink` inline element here.
+          skip (testInline "`<http://foo.bar.`baz>`" (InlineCode "<http://foo.bar.`baz>"))
+        , skip (testInline "<http://foo.bar.`baz>`\'" (Text "<a href=\"http://foo.bar.%60baz\">http://foo.bar.`baz</a>`"))
+
+        , -- 
+          testInline "```foo``" (Text "```foo``")
+        , testInline "`foo" (Text "`foo")
+
+        , -- 
+          testInlines
+            "`foo``bar``"
+            [ Text "`foo"
+            , InlineCode "bar"
+            ]
+        ]

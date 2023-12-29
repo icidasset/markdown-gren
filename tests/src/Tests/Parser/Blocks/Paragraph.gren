@@ -1,0 +1,93 @@
+module Tests.Parser.Blocks.Paragraph exposing ( examples_219_to_226 )
+
+import Expect
+import Markdown
+import Markdown.Block exposing ( Block(..) )
+import Markdown.Inline exposing ( Inline(..) )
+import Markdown.Parser.Inlines as Inlines
+import Test exposing (..)
+import Tests.Parser.Helpers exposing (..)
+
+
+examples_219_to_226 =
+    describe
+        "Paragraphs"
+        [ -- Example 219
+          testBlocks
+            "aaa\n\nbbb"
+            [ Paragraph
+                [ Text "aaa"
+                ]
+            , Paragraph
+                [ Text "bbb"
+                ]
+            ]
+
+        , -- 220
+          testBlocks
+            "aaa\nbbb\n\nccc\nddd"
+            [ Paragraph
+                [ Text "aaa\nbbb"
+                ]
+            , Paragraph
+                [ Text "ccc\nddd"
+                ]
+            ]
+
+        , -- 221
+          testBlocks
+            "aaa\n\n\nbbb"
+            [ Paragraph
+                [ Text "aaa"
+                ]
+            , Paragraph
+                [ Text "bbb"
+                ]
+            ]
+
+        , -- 222
+          testBlocks
+            "  aaa\n bbb"
+            [ Paragraph
+                [ Text "aaa\nbbb"
+                ]
+            ]
+
+        , -- 223
+          testBlocks
+            "aaa\n             bbb\n                                       ccc"
+            [ Paragraph
+                [ Text "aaa\nbbb\nccc"
+                ]
+            ]
+
+        , -- 224
+          testBlocks
+            "   aaa\nbbb"
+            [ Paragraph
+                [ Text "aaa\nbbb"
+                ]
+            ]
+
+        , -- 225
+          testBlocks
+            "    bbb\nccc"
+            [ CodeBlock
+                { body = "bbb"
+                , language = Nothing
+                }
+            , Paragraph
+                [ Text "ccc"
+                ]
+            ]
+
+        , -- 226
+          testBlocks
+            "aaa     \nbbb     "
+            [ Paragraph
+                [ Text "aaa"
+                , HardLineBreak
+                , Text "bbb"
+                ]
+            ]
+        ]

@@ -1,0 +1,37 @@
+module Markdown.Block exposing ( Block(..) )
+
+{-| Block-level types and operations.
+
+@docs Block
+
+-}
+
+import Markdown.Inline exposing ( Inline )
+
+
+
+-- 🌳
+
+
+type Block
+    = BlockQuote (Array Block)
+    | CodeBlock
+        { body : String
+        , language : Maybe String
+        }
+    | Heading
+        { level : Int
+        }
+        (Array Inline)
+    | OrderedLooseList
+        { start : Int
+        }
+        (Array (Array Block))
+    | OrderedTightList
+        { start : Int
+        }
+        (Array (Array Inline))
+    | Paragraph (Array Inline)
+    | ThematicBreak
+    | UnorderedLooseList (Array (Array Block))
+    | UnorderedTightList (Array (Array Inline))

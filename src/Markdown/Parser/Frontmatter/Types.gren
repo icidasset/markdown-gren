@@ -1,0 +1,10 @@
+module Markdown.Parser.Frontmatter.Types exposing (..)
+
+import Parser
+
+
+type alias Parser m =
+    Parser.Parser
+        { metadata : Maybe m
+        , markdown : String
+        }

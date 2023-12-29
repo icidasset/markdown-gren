@@ -1,0 +1,38 @@
+module Markdown.Parser.Frontmatter.Json exposing (..)
+
+import Json.Decode as Json
+import Markdown.Parser.Frontmatter.Types as Frontmatter
+import Parser exposing (..)
+import Parser.Extra exposing (..)
+
+
+parser : Json.Decoder metadata -> Frontmatter.Parser metadata
+parser decoder =
+    succeed identity
+        |. specificChar '{'
+        |= getChompedString (chompUntilEndOr "\n\n")
+        |> map
+                (\jsonWithoutOpeningChar ->
+                    let
+                        jsonString =
+                            "{" ++ jsonWithoutOpeningChar
+                    in
+                    case Json.decodeString decoder jsonString of
+                        Ok metadata ->
+                            Just metadata
+
+                        Err err ->
+                            Nothing
+                )
+        |> andThen
+                (\metadata ->
+                    succeed identity
+                        |= many char
+                        |. end
+                        |> map
+                                (\chars ->
+                                    { metadata = metadata
+                                    , markdown = String.fromArray chars
+                                    }
+                                )
+                )

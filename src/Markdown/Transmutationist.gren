@@ -1,0 +1,120 @@
+module Markdown.Transmutationist exposing (..)
+
+import Markdown.Block exposing ( Block(..) )
+import Markdown.Inline exposing ( Inline(..) )
+import Transmutable.Html as Html exposing ( Html, text )
+import Transmutable.Html.Attributes as A
+
+
+toHtml : Block -> Html msg
+toHtml block =
+    case block of
+        BlockQuote blocks ->
+            Html.blockquote [] (Array.map toHtml blocks)
+
+        CodeBlock { body, language } ->
+            Html.pre
+                []
+                [ Html.code
+                    (case language of
+                        Just l ->
+                            [ A.class ("language-" ++ l)
+                            ]
+
+                        Nothing ->
+                            []
+                    )
+                    [ text body
+                    ]
+                ]
+
+        Heading { level } inlines ->
+            (case level of
+                1 ->
+                    Html.h1
+
+                2 ->
+                    Html.h2
+
+                3 ->
+                    Html.h3
+
+                4 ->
+                    Html.h4
+
+                5 ->
+                    Html.h5
+
+                6 ->
+                    Html.h6
+
+                _ ->
+                    Html.p
+            )
+                []
+                (Array.map inlineToHtml inlines)
+
+        OrderedLooseList { start } listItems ->
+            Html.ol
+                [ A.attribute "start" (String.fromInt start)
+                ]
+                (Array.map (\blocks -> Html.li [] (Array.map toHtml blocks)) listItems)
+
+        OrderedTightList { start } listItems ->
+            Html.ol
+                [ A.attribute "start" (String.fromInt start)
+                ]
+                (Array.map (\inlines -> Html.li [] (Array.map inlineToHtml inlines)) listItems)
+
+        Paragraph inlines ->
+            Html.p [] (Array.map inlineToHtml inlines)
+
+        ThematicBreak ->
+            Html.hr [] []
+
+        UnorderedLooseList listItems ->
+            Html.ul [] (Array.map (\blocks -> Html.li [] (Array.map toHtml blocks)) listItems)
+
+        UnorderedTightList listItems ->
+            Html.ul [] (Array.map (\inlines -> Html.li [] (Array.map inlineToHtml inlines)) listItems)
+
+
+inlineToHtml : Inline -> Html msg
+inlineToHtml inline =
+    case inline of
+        Emphasis { times } inlines ->
+            (case times of
+                1 ->
+                    Html.em
+
+                _ ->
+                    Html.strong
+            )
+                []
+                (Array.map inlineToHtml inlines)
+
+        HardLineBreak ->
+            Html.br [] []
+
+        InlineCode code ->
+            Html.code
+                []
+                [ text code
+                ]
+
+        Image { alt, url } ->
+            Html.img
+                [ A.alt alt
+                , A.src url
+                ]
+                []
+
+        Link props ->
+            Html.a
+                [ A.href props.url
+                ]
+                [ text props.text
+                ]
+
+        Text t ->
+            text t

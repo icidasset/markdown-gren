@@ -1,0 +1,51 @@
+module Tests.Parser.Helpers exposing (..)
+
+import Expect
+import Markdown
+import Markdown.Block exposing ( Block(..) )
+import Markdown.Inline exposing ( Inline(..) )
+import Markdown.Parser.Blocks as Blocks
+import Markdown.Parser.Inlines as Inlines
+import Test exposing (..)
+
+
+
+-- BLOCKS
+
+
+testBlock string expectedResult =
+    testBlocks
+        string
+        [ expectedResult
+        ]
+
+
+testBlocks string expectedResult =
+    test
+        string
+        (\_ ->
+            string
+                |> Blocks.parse
+                |> Expect.equal (Ok expectedResult)
+        )
+
+
+
+-- INLINES
+
+
+testInline string expectedResult =
+    testInlines
+        string
+        [ expectedResult
+        ]
+
+
+testInlines string expectedResult =
+    test
+        string
+        (\_ ->
+            string
+                |> Inlines.parse
+                |> Expect.equal (Ok expectedResult)
+        )
