@@ -11,17 +11,17 @@ A markdown parser package for [Gren](https://gren-lang.org/).
 - [x] Code blocks (fenced & indented)
 - [x] Headers
 - [x] Lists (ordered & unordered)
-- [x] Thematic break
+- [x] Thematic breaks
 - [x] Paragraphs
 - [x] Emphasis & strong emphasis
-- [x] Hard line break
+- [x] Hard line breaks
 - [x] Inline code
-- [x] Image
-- [x] Link
+- [x] Images
+- [x] Links
+- [x] Autolinks
 - [ ] Link reference definitions
 - [ ] Raw HTML
 - [ ] Setext headings
-- [ ] Autolinks
 
 
 ### Fully tested according to spec
@@ -30,14 +30,14 @@ A markdown parser package for [Gren](https://gren-lang.org/).
 - [ ] Code blocks (fenced & indented)
 - [ ] Headers
 - [ ] Lists (ordered & unordered)
-- [ ] Thematic break
+- [ ] Thematic breaks
 - [x] Paragraphs
 - [x] Emphasis & strong emphasis (90% done)
-- [ ] Hard line break
+- [ ] Hard line breaks
 - [x] Inline code
-- [ ] Image
-- [ ] Link
+- [ ] Images
+- [ ] Links
+- [x] Autolinks
 - [ ] Link reference definitions
 - [ ] Raw HTML
 - [ ] Setext headings
-- [ ] Autolinks

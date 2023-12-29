@@ -54,6 +54,7 @@ parserLoop customInlineParsers inlineElements =
         , inline (backtrackable hardLineBreakParser)
         , inline (backtrackable imageParser)
         , inline (backtrackable linkParser)
+        , inline (backtrackable autolinksParser)
 
         , -- 
           inline (backtrackable (oneOf customInlineParsers))
@@ -65,6 +66,47 @@ parserLoop customInlineParsers inlineElements =
 
 
 -- INDIVIDUAL PARSERS
+
+
+autolinksParser : Parser Inline
+autolinksParser =
+    oneOf
+        [ succeed (\a b c d -> a ++ b ++ c ++ ":" ++ d)
+            |. specificChar '<'
+            |= getChompedString (chompIf Char.isAlpha)
+            |= getChompedString (chompIf isSchemeChar)
+            |= getChompedString (chompWhile isSchemeChar)
+            |. specificChar ':'
+            |= getChompedString (chompUntil ">")
+            |. specificChar '>'
+            |> andThen
+                    (\url ->
+                        if String.contains " " url then
+                            problem "URL cannot contain spaces"
+                        else
+                            { text = url
+                            , url = url
+                            }
+                                |> Link
+                                |> succeed
+                    )
+            |> backtrackable
+
+        , -- Email
+          succeed (\a b -> a ++ "@" ++ b)
+            |. specificChar '<'
+            |= getChompedString (chompOneOrMore (\c -> Char.isAlphaNum c || c == '.' || c == '!' || c == '#' || c == '$' || c == '%' || c == '&' || c == '\'' || c == '*' || c == '+' || c == '/' || c == '=' || c == '?' || c == '^' || c == '_' || c == '`' || c == '{' || c == '|' || c == '}' || c == '~' || c == '-' || c == ']' || c == '+'))
+            |. specificChar '@'
+            |= getChompedString (chompOneOrMore (\c -> Char.isAlphaNum c || c == '.' || c == '-'))
+            |. specificChar '>'
+            |> map
+                    (\email ->
+                        Link
+                            { text = email
+                            , url = "mailto:" ++ email
+                            }
+                    )
+        ]
 
 
 emphasisParser : Char -> Int -> Maybe Inline -> Parser Inline
@@ -613,6 +655,11 @@ textLoopParser inlineElements lastElement =
 
 
 -- ㊙️
+
+
+isSchemeChar : Char -> Bool
+isSchemeChar c =
+    Char.isAlphaNum c || c == '+' || c == '.' || c == '-'
 
 
 textLoop : Array Inline -> Maybe Inline -> String -> Step (Array Inline) (Array Inline)

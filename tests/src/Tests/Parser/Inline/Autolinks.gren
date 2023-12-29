@@ -1,0 +1,108 @@
+module Tests.Parser.Inline.Autolinks exposing ( examples_593_to_611 )
+
+import Expect
+import Markdown
+import Markdown.Block exposing ( Block(..) )
+import Markdown.Inline exposing ( Inline(..) )
+import Markdown.Parser.Inlines as Inlines
+import Test exposing (..)
+import Tests.Parser.Helpers exposing (..)
+
+
+examples_593_to_611 =
+    describe
+        "Autolinks"
+        [ testInline
+            "<http://foo.bar.baz>"
+            (Link
+                { text = "http://foo.bar.baz"
+                , url = "http://foo.bar.baz"
+                }
+            )
+        , testInline
+            "<http://foo.bar.baz/test?q=hello&id=22&boolean>"
+            (Link
+                { text = "http://foo.bar.baz/test?q=hello&id=22&boolean"
+                , url = "http://foo.bar.baz/test?q=hello&id=22&boolean"
+                }
+            )
+        , testInline
+            "<irc://foo.bar:2233/baz>"
+            (Link
+                { text = "irc://foo.bar:2233/baz"
+                , url = "irc://foo.bar:2233/baz"
+                }
+            )
+        , testInline
+            "<MAILTO:FOO@BAR.BAZ>"
+            (Link
+                { text = "MAILTO:FOO@BAR.BAZ"
+                , url = "MAILTO:FOO@BAR.BAZ"
+                }
+            )
+        , testInline
+            "<a+b+c:d>"
+            (Link
+                { text = "a+b+c:d"
+                , url = "a+b+c:d"
+                }
+            )
+        , testInline
+            "<made-up-scheme://foo,bar>"
+            (Link
+                { text = "made-up-scheme://foo,bar"
+                , url = "made-up-scheme://foo,bar"
+                }
+            )
+        , testInline
+            "<http://../>"
+            (Link
+                { text = "http://../"
+                , url = "http://../"
+                }
+            )
+        , testInline
+            "<localhost:5001/foo>"
+            (Link
+                { text = "localhost:5001/foo"
+                , url = "localhost:5001/foo"
+                }
+            )
+        , testInline "<http://foo.bar/baz bim>" (Text "<http://foo.bar/baz bim>")
+        , testInline
+            "<http://example.com/\\[\\>"
+            (Link
+                { text = "http://example.com/\\[\\"
+                , url = "http://example.com/\\[\\"
+                }
+            )
+            -- Email
+        , testInline
+            "<foo@bar.example.com>"
+            (Link
+                { text = "foo@bar.example.com"
+                , url = "mailto:foo@bar.example.com"
+                }
+            )
+        , testInline
+            "<foo+special@Bar.baz-bar0.com>"
+            (Link
+                { text = "foo+special@Bar.baz-bar0.com"
+                , url = "mailto:foo+special@Bar.baz-bar0.com"
+                }
+            )
+        , testInline
+            "<foo+@bar.example.com>"
+            (Link
+                { text = "foo+@bar.example.com"
+                , url = "mailto:foo+@bar.example.com"
+                }
+            )
+            -- 
+        , testInline "<>" (Text "<>")
+        , testInline "< http://foo.bar >" (Text "< http://foo.bar >")
+        , testInline "<m:abc>" (Text "<m:abc>")
+        , testInline "<foo.bar.baz>" (Text "<foo.bar.baz>")
+        , testInline "http://example.com" (Text "http://example.com")
+        , testInline "foo@bar.example.com" (Text "foo@bar.example.com")
+        ]
