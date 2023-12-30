@@ -5,10 +5,10 @@ module Markdown.Inline exposing ( Inline(..) )
 @docs Inline
 
 -}
--- 🌳
 
 
-
+{-| Inline elements.
+-}
 type Inline
     = Emphasis
         { char : Char

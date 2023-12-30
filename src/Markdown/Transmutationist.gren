@@ -1,4 +1,10 @@
-module Markdown.Transmutationist exposing (..)
+module Markdown.Transmutationist exposing (toHtml, inlineToHtml)
+
+{-| Markdown transformations.
+
+@docs toHtml, inlineToHtml
+
+-}
 
 import Markdown.Block exposing ( Block(..) )
 import Markdown.Inline exposing ( Inline(..) )
@@ -6,6 +12,8 @@ import Transmutable.Html as Html exposing ( Html, text )
 import Transmutable.Html.Attributes as A
 
 
+{-| Transform a Markdown block into HTML.
+-}
 toHtml : Block -> Html msg
 toHtml block =
     case block of
@@ -79,6 +87,8 @@ toHtml block =
             Html.ul [] (Array.map (\inlines -> Html.li [] (Array.map inlineToHtml inlines)) listItems)
 
 
+{-| Transform an inline Markdown element into HTML.
+-}
 inlineToHtml : Inline -> Html msg
 inlineToHtml inline =
     case inline of

@@ -1,6 +1,10 @@
-module Markdown.Parser.Blocks exposing (..)
+module Markdown.Parser.Blocks exposing (RawBlock(..), parse, parseRaw, parser, rawBlockParser)
 
-{-|-}
+{-| Block-level parsers.
+
+@docs parse, parseRaw, parser, rawBlockParser, RawBlock
+
+-}
 
 import Markdown.Block exposing ( Block(..) )
 import Markdown.Inline exposing ( Inline )
@@ -12,7 +16,7 @@ import Parser.Extra exposing (..)
 
 -- 🌳
 
-
+{-|-}
 type RawBlock
     = RawBlockQuote String
     | RawFencedCode
@@ -42,25 +46,20 @@ type RawBlock
         (Array (Array String))
 
 
-isClosed =
-    { closed = True
-    }
 
-
-isOpen =
-    { closed = False
-    }
 
 
 
 -- 🛠️
 
-
+{-| Parse blocks.
+-}
 parse : String -> Result (Array DeadEnd) (Array Block)
 parse =
     Parser.run parser
 
-
+{-| Parse blocks without parsing the inline elements too.
+-}
 parseRaw : String -> Result (Array DeadEnd) (Array RawBlock)
 parseRaw =
     Parser.run (loop [] rawBlockParser)
@@ -69,16 +68,17 @@ parseRaw =
 
 -- TOP-LEVEL PARSER
 
-
+{-| Top-level block parser.
+-}
 parser : Parser (Array Block)
 parser =
     map
         (Array.foldl
             (\rawBlock blocks ->
                 case rawBlock of
-                    -- 
+                    --
                     -- BlockQuote
-                    -- 
+                    --
                     RawBlockQuote string ->
                         let
                             innerBlocks =
@@ -86,9 +86,9 @@ parser =
                         in
                         Array.pushLast (BlockQuote innerBlocks) blocks
 
-                    -- 
+                    --
                     -- CodeBlock (fenced)
-                    -- 
+                    --
                     RawFencedCode { body, language } ->
                         Array.pushLast
                             (CodeBlock
@@ -98,9 +98,9 @@ parser =
                             )
                             blocks
 
-                    -- 
+                    --
                     -- Heading
-                    -- 
+                    --
                     RawHeading props string ->
                         let
                             inlines =
@@ -110,9 +110,9 @@ parser =
                         in
                         Array.pushLast (Heading props inlines) blocks
 
-                    -- 
+                    --
                     -- CodeBlock (indented)
-                    -- 
+                    --
                     RawIndentedCode body ->
                         Array.pushLast
                             (CodeBlock
@@ -122,9 +122,9 @@ parser =
                             )
                             blocks
 
-                    -- 
+                    --
                     -- OrderedLooseList & OrderedTightList
-                    -- 
+                    --
                     RawOrderedList { start } rawListItems ->
                         let
                             listItems =
@@ -145,9 +145,9 @@ parser =
                         in
                         Array.pushLast block blocks
 
-                    -- 
+                    --
                     -- Paragraph
-                    -- 
+                    --
                     RawParagraph _ string ->
                         let
                             inlines =
@@ -158,15 +158,15 @@ parser =
                         in
                         Array.pushLast (Paragraph inlines) blocks
 
-                    -- 
+                    --
                     -- ThematicBreak
-                    -- 
+                    --
                     RawThematicBreak ->
                         Array.pushLast ThematicBreak blocks
 
-                    -- 
+                    --
                     -- UnorderedLooseList & UnorderedTightList
-                    -- 
+                    --
                     RawUnorderedList _ rawListItems ->
                         let
                             listItems =
@@ -192,6 +192,8 @@ parser =
 -- RAW PARSER (1 level below top)
 
 
+{-| Raw block parser.
+-}
 rawBlockParser : Array RawBlock -> Parser (Step (Array RawBlock) (Array RawBlock))
 rawBlockParser blocks =
     let
@@ -219,7 +221,7 @@ rawBlockParser blocks =
         [ -- Check if we reached the end
           map (\_ -> Done blocks) (succeed identity |. end)
 
-        , -- 
+        , --
           block (backtrackable (cannotInterruptParagraph headingParser))
         , block (backtrackable blockQuoteParser)
         , block (backtrackable thematicBreakParser)
@@ -704,3 +706,15 @@ lastBlockWasList constructor { currentList, lastList, allBlocksExceptLast, allBl
             |> wrapLine
             |> constructor currentList.props
             |> addToBlocks allBlocks
+
+
+-- ㊙️
+
+isClosed =
+    { closed = True
+    }
+
+
+isOpen =
+    { closed = False
+    }

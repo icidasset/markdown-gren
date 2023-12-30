@@ -1,6 +1,10 @@
-module Markdown.Parser exposing (..)
+module Markdown.Parser exposing (jsonFrontmatter, parse)
 
-{-|-}
+{-| Markdown parsing.
+
+@docs parse, jsonFrontmatter
+
+-}
 
 import Json.Decode as Json
 import Markdown.Block exposing ( Block )
@@ -13,12 +17,15 @@ import Parser exposing ( Parser )
 
 -- 🛠️
 
-
+{-| JSON frontmatter parser.
+-}
 jsonFrontmatter : Json.Decoder metadata -> Frontmatter.Parser metadata
 jsonFrontmatter =
     Markdown.Parser.Frontmatter.Json.parser
 
 
+{-| Parse an entire markdown document with or without frontmatter.
+-}
 parse :
     { frontmatter : Maybe (Frontmatter.Parser metadata)
     }

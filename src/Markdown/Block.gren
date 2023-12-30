@@ -10,9 +10,8 @@ import Markdown.Inline exposing ( Inline )
 
 
 
--- 🌳
-
-
+{-| Block elements.
+-}
 type Block
     = BlockQuote (Array Block)
     | CodeBlock

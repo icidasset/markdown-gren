@@ -1,6 +1,10 @@
-module Markdown.Parser.Inlines exposing (..)
+module Markdown.Parser.Inlines exposing (parse, parser)
 
-{-|-}
+{-| Inline-level parsers.
+
+@docs parse, parser
+
+-}
 
 import Markdown.Inline exposing ( Inline(..) )
 import Maybe.Extra as Maybe
@@ -11,7 +15,8 @@ import Parser.Extra exposing (..)
 
 -- 🛠️
 
-
+{-| Parse inlines.
+-}
 parse : String -> Result (Array DeadEnd) (Array Inline)
 parse =
     Parser.run parser
@@ -20,7 +25,8 @@ parse =
 
 -- TOP-LEVEL PARSER
 
-
+{-| Top-level inline parser.
+-}
 parser : Parser (Array Inline)
 parser =
     loop [] (parserLoop [])
@@ -45,10 +51,10 @@ parserLoop customInlineParsers inlineElements =
         [ -- Check if we reached the end
           map (\_ -> Done inlineElements) end
 
-        , -- 
+        , --
           backtrackable (inlineCodeParser inlineElements lastElement)
 
-        , -- 
+        , --
           inline (backtrackable (emphasisWithUnderscoreParser lastElement))
         , inline (backtrackable (emphasisWithStarParser lastElement))
         , inline (backtrackable hardLineBreakParser)
@@ -56,10 +62,10 @@ parserLoop customInlineParsers inlineElements =
         , inline (backtrackable linkParser)
         , inline (backtrackable autolinksParser)
 
-        , -- 
+        , --
           inline (backtrackable (oneOf customInlineParsers))
 
-        , -- 
+        , --
           textLoopParser inlineElements lastElement
         ]
 
@@ -292,7 +298,7 @@ emphasisParser emphasisChar addToLeftFlank lastElement =
                                                                 [ chompUntilNextClosing chompOptsWithFlankNested
                                                                 , chompUntilNextClosing chompOptsWithFlank
 
-                                                                , -- 
+                                                                , --
                                                                   if flank == additionalFlank then
                                                                     lookAtClosing rightFlankExtraction.emph
                                                                   else
@@ -326,7 +332,7 @@ emphasisParser emphasisChar addToLeftFlank lastElement =
                                 oneOf
                                     [ handleClosing Nothing entireText
 
-                                    , -- 
+                                    , --
                                       if String.startsWith emphasisCharString entireText then
                                         problem ""
                                       else if String.contains emphasisCharString entireText then

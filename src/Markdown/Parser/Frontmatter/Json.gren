@@ -1,4 +1,10 @@
-module Markdown.Parser.Frontmatter.Json exposing (..)
+module Markdown.Parser.Frontmatter.Json exposing (parser)
+
+{-| JSON frontmatter.
+
+@docs parser
+
+-}
 
 import Json.Decode as Json
 import Markdown.Parser.Frontmatter.Types as Frontmatter
@@ -6,6 +12,8 @@ import Parser exposing (..)
 import Parser.Extra exposing (..)
 
 
+{-| JSON frontmatter parser.
+-}
 parser : Json.Decoder metadata -> Frontmatter.Parser metadata
 parser decoder =
     succeed identity

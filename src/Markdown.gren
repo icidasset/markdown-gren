@@ -1,21 +1,41 @@
-module Markdown exposing (..)
+module Markdown exposing (parse, jsonFrontmatter, toHtml)
 
-{-|-}
+{-| Markdown.
 
+@docs parse, jsonFrontmatter, toHtml
+
+-}
+
+import Json.Decode as Json
 import Markdown.Block exposing ( Block )
 import Markdown.Parser
+import Markdown.Parser.Frontmatter.Types as Frontmatter
 import Markdown.Transmutationist
 import Transmutable.Html exposing ( Html )
 
 
+{-| JSON frontmatter parser.
+-}
+jsonFrontmatter : Json.Decoder metadata -> Frontmatter.Parser metadata
 jsonFrontmatter =
     Markdown.Parser.jsonFrontmatter
 
 
+{-| Parse an entire markdown document with or without frontmatter.
+-}
+parse :
+    { frontmatter : Maybe (Frontmatter.Parser metadata)
+    }
+    -> String
+    -> { metadata : Maybe metadata
+       , blocks : Array Block
+       }
 parse =
     Markdown.Parser.parse
 
 
+{-| Transform a Markdown block into HTML.
+-}
 toHtml : Block -> Html msg
 toHtml =
     Markdown.Transmutationist.toHtml
