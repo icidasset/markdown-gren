@@ -1,4 +1,4 @@
-module Markdown exposing (parse, jsonFrontmatter, toHtml)
+module Markdown exposing ( parse, jsonFrontmatter, toHtml )
 
 {-| Markdown.
 

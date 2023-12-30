@@ -9,7 +9,6 @@ module Markdown.Block exposing ( Block(..) )
 import Markdown.Inline exposing ( Inline )
 
 
-
 {-| Block elements.
 -}
 type Block

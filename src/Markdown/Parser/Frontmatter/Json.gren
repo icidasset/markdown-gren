@@ -1,4 +1,4 @@
-module Markdown.Parser.Frontmatter.Json exposing (parser)
+module Markdown.Parser.Frontmatter.Json exposing ( parser )
 
 {-| JSON frontmatter.
 

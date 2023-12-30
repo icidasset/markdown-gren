@@ -1,4 +1,4 @@
-module Markdown.Transmutationist exposing (toHtml, inlineToHtml)
+module Markdown.Transmutationist exposing ( toHtml, inlineToHtml )
 
 {-| Markdown transformations.
 

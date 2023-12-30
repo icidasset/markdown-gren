@@ -1,4 +1,4 @@
-module Markdown.Parser.Frontmatter.Types exposing (Parser)
+module Markdown.Parser.Frontmatter.Types exposing ( Parser )
 
 {-| Frontmatter types.
 
