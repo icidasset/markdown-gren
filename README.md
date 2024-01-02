@@ -1,9 +1,19 @@
-A markdown parser package for [Gren](https://gren-lang.org/).
+A commonmark markdown package for [Gren](https://gren-lang.org/).
 
 ⚠️ **This mostly works, but the test suite is incomplete and a few features are still missing.**
 
 
+## Commonmark
+
+This package implements pretty much the entire Commonmark spec,
+but there are a few small differences:
+
+- It doesn't parse open HTML tags that are not closed.
+
+
 ## To do
+
+- [ ] Allow for custom inline & block parsers to be passed in
 
 ### Parser implementations
 
