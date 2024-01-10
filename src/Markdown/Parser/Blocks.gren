@@ -6,11 +6,15 @@ module Markdown.Parser.Blocks exposing ( RawBlock(..), parse, parseRaw, parser, 
 
 -}
 
+import Dict exposing ( Dict )
 import Markdown.Block exposing ( Block(..) )
 import Markdown.Inline exposing ( Inline )
 import Markdown.Parser.Inlines
 import Parser exposing (..)
 import Parser.Extra exposing (..)
+import Transmutable.Html as Html
+import Transmutable.Html.Interior as Html
+import Transmutable.Html.Parser as Html
 
 
 
@@ -28,6 +32,15 @@ type RawBlock
         { level : Int
         }
         String
+    | RawHtml RawHtml
+    | RawHtmlOpening
+        { tagName : String
+        , attributes : Dict String String
+        , closed : Bool
+        }
+    | RawHtmlClosing
+        { tagName : String
+        }
     | RawIndentedCode String
     | RawOrderedList
         { leadingSpaces : Int
@@ -45,6 +58,19 @@ type RawBlock
         , symbol : String
         }
         (Array (Array String))
+
+
+{-|-}
+type RawHtml
+    = Cdata String
+    | Comment String
+    | Declaration String
+    | ProcessingInstruction String
+    | Node
+        { tagName : String
+        , attributes : Dict String String
+        }
+        String
 
 
 
@@ -77,9 +103,9 @@ parser =
         (Array.foldl
             (\rawBlock blocks ->
                 case rawBlock of
-                    -- 
+                    --
                     -- BlockQuote
-                    -- 
+                    --
                     RawBlockQuote string ->
                         let
                             innerBlocks =
@@ -87,9 +113,9 @@ parser =
                         in
                         Array.pushLast (BlockQuote innerBlocks) blocks
 
-                    -- 
+                    --
                     -- CodeBlock (fenced)
-                    -- 
+                    --
                     RawFencedCode { body, language } ->
                         Array.pushLast
                             (CodeBlock
@@ -99,9 +125,9 @@ parser =
                             )
                             blocks
 
-                    -- 
+                    --
                     -- Heading
-                    -- 
+                    --
                     RawHeading props string ->
                         let
                             inlines =
@@ -111,9 +137,9 @@ parser =
                         in
                         Array.pushLast (Heading props inlines) blocks
 
-                    -- 
+                    --
                     -- CodeBlock (indented)
-                    -- 
+                    --
                     RawIndentedCode body ->
                         Array.pushLast
                             (CodeBlock
@@ -123,9 +149,9 @@ parser =
                             )
                             blocks
 
-                    -- 
+                    --
                     -- OrderedLooseList & OrderedTightList
-                    -- 
+                    --
                     RawOrderedList { start } rawListItems ->
                         let
                             listItems =
@@ -146,9 +172,9 @@ parser =
                         in
                         Array.pushLast block blocks
 
-                    -- 
+                    --
                     -- Paragraph
-                    -- 
+                    --
                     RawParagraph _ string ->
                         let
                             inlines =
@@ -159,15 +185,15 @@ parser =
                         in
                         Array.pushLast (Paragraph inlines) blocks
 
-                    -- 
+                    --
                     -- ThematicBreak
-                    -- 
+                    --
                     RawThematicBreak ->
                         Array.pushLast ThematicBreak blocks
 
-                    -- 
+                    --
                     -- UnorderedLooseList & UnorderedTightList
-                    -- 
+                    --
                     RawUnorderedList _ rawListItems ->
                         let
                             listItems =
@@ -220,9 +246,9 @@ rawBlockParser blocks =
     in
     oneOf
         [ -- Check if we reached the end
-          map (\_ -> Done blocks) (succeed identity |. end)
+          map (\_ -> Done blocks) end
 
-        , -- 
+        , --
           block (backtrackable (cannotInterruptParagraph headingParser))
         , block (backtrackable blockQuoteParser)
         , block (backtrackable thematicBreakParser)
@@ -251,6 +277,52 @@ rawBlockParser blocks =
                             |> Loop
             )
             |= backtrackable (cannotInterruptParagraph indentedCodeParser)
+
+        , -- HTML: 1 -> 5
+          [ andThen
+                (\html ->
+                    case html of
+                        Html.Node { tagName } attributes descendants ->
+                            (case descendants of
+                                Html.Regular array ->
+                                    array
+                            )
+                                |> Html.arrayToString
+                                |> Node
+                                        { tagName = tagName
+                                        , attributes = htmlAttributesToDictionary attributes
+                                        }
+                                |> succeed
+
+                        _ ->
+                            problem ""
+                )
+                (backtrackable Html.nonRecursiveNodeParser)
+
+          , --
+            extractHtmlString Comment (backtrackable Html.commentParser)
+          , extractHtmlString ProcessingInstruction (backtrackable Html.processingInstructionParser)
+          , extractHtmlString Declaration (backtrackable Html.declarationParser)
+          , extractHtmlString Cdata (backtrackable Html.cdataParser)
+          ]
+            |> oneOf
+            |> map RawHtml
+            |> block
+
+        , -- 6
+          [ map RawHtmlOpening (isHtmlType6 (backtrackable openingTagParser))
+          , map RawHtmlClosing (isHtmlType6 (backtrackable closingTagParser))
+          ]
+            |> oneOf
+            |> block
+
+        , -- 7
+          [ map RawHtmlOpening (isHtmlType7 (backtrackable openingTagParser))
+          , map RawHtmlClosing (isHtmlType7 (backtrackable closingTagParser))
+          ]
+            |> oneOf
+            |> cannotInterruptParagraph
+            |> block
 
         , -- If all fails, then it's a paragraph.
           -- Try parsing one line at a time.
@@ -713,6 +785,109 @@ lastBlockWasList constructor { currentList, lastList, allBlocksExceptLast, allBl
 -- ㊙️
 
 
+extractHtmlString fn =
+    map
+        (\html ->
+            case html of
+                Html.Cdata s ->
+                    fn s
+
+                Html.Comment s ->
+                    fn s
+
+                Html.Declaration s ->
+                    fn s
+
+                Html.Node { tagName } _ _ ->
+                    fn tagName
+
+                Html.ProcessingInstruction s ->
+                    fn s
+
+                Html.TextNode s ->
+                    fn s
+        )
+
+
+htmlAttributesToDictionary =
+    Array.foldl
+        (\attr acc ->
+            case attr of
+                Html.Attribute k v ->
+                    Dict.insert k v acc
+
+                _ ->
+                    acc
+        )
+        Dict.empty
+
+
+htmlType6TagNames =
+    [ "address"
+    , "article"
+    , "aside"
+    , "base"
+    , "basefont"
+    , "blockquote"
+    , "body"
+    , "caption"
+    , "center"
+    , "col"
+    , "colgroup"
+    , "dd"
+    , "details"
+    , "dialog"
+    , "dir"
+    , "div"
+    , "dl"
+    , "dt"
+    , "fieldset"
+    , "figcaption"
+    , "figure"
+    , "footer"
+    , "form"
+    , "frame"
+    , "frameset"
+    , "h1"
+    , "h2"
+    , "h3"
+    , "h4"
+    , "h5"
+    , "h6"
+    , "head"
+    , "header"
+    , "hr"
+    , "html"
+    , "iframe"
+    , "legend"
+    , "li"
+    , "link"
+    , "main"
+    , "menu"
+    , "menuitem"
+    , "nav"
+    , "noframes"
+    , "ol"
+    , "optgroup"
+    , "option"
+    , "p"
+    , "param"
+    , "section"
+    , "source"
+    , "summary"
+    , "table"
+    , "tbody"
+    , "td"
+    , "tfoot"
+    , "th"
+    , "thead"
+    , "title"
+    , "tr"
+    , "track"
+    , "ul"
+    ]
+
+
 isClosed =
     { closed = True
     }
@@ -721,3 +896,61 @@ isClosed =
 isOpen =
     { closed = False
     }
+
+
+isHtmlType6 =
+    andThen
+        (\a ->
+            if Array.member a.tagName htmlType6TagNames then
+                succeed a
+            else
+                problem ""
+        )
+
+
+isHtmlType7 =
+    andThen
+        (\a ->
+            if
+                Array.member
+                    a.tagName
+                    [ "pre"
+                    , "script"
+                    , "style"
+                    , "textarea"
+                    ]
+                    == False
+            then
+                succeed a
+            else
+                problem ""
+        )
+
+
+closingTagParser =
+    map
+        (\{ tagName } ->
+            { tagName = tagName
+            }
+        )
+        Html.closingTagParser
+
+
+openingTagParser =
+    [ backtrackable
+        (Html.openingTagParser
+            { closed = False
+            }
+        )
+    , Html.openingTagParser
+        { closed = True
+        }
+    ]
+        |> oneOf
+        |> map
+                (\{ tagName, attributes, closed } ->
+                    { tagName = tagName
+                    , attributes = htmlAttributesToDictionary attributes
+                    , closed = closed
+                    }
+                )
