@@ -6,8 +6,9 @@ module Markdown.Transmutationist exposing ( toHtml, inlineToHtml )
 
 -}
 
+import Dict
 import Markdown.Block exposing ( Block(..) )
-import Markdown.Inline exposing ( Inline(..) )
+import Markdown.Inline exposing ( Html(..), Inline(..) )
 import Transmutable.Html as Html exposing ( Html, text )
 import Transmutable.Html.Attributes as A
 
@@ -61,6 +62,32 @@ toHtml block =
             )
                 []
                 (Array.map inlineToHtml inlines)
+
+        HtmlBlock html ->
+            case html of
+                Cdata s ->
+                    Html.cdata s
+
+                Comment s ->
+                    Html.comment s
+
+                Declaration s ->
+                    Html.declaration s
+
+                ProcessingInstruction s ->
+                    Html.processingInstruction s
+
+        HtmlBlockNode { tagName, attributes } blocks ->
+            Html.node
+                tagName
+                (attributes
+                    |> Dict.toArray
+                    |> Array.map (\{ key, value } -> A.attribute key value)
+                )
+                (Array.map toHtml blocks)
+
+        Inline inline ->
+            inlineToHtml inline
 
         OrderedLooseList { start } listItems ->
             Html.ol

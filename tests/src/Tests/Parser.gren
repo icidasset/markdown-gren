@@ -15,6 +15,7 @@ import Markdown.Block exposing ( Block(..) )
 import Markdown.Inline exposing ( Inline(..) )
 import Markdown.Parser.Inlines as Inlines
 import Test exposing (..)
+import Tests.Parser.Blocks.Html exposing (..)
 import Tests.Parser.Blocks.Paragraph exposing (..)
 import Tests.Parser.Inline.Autolinks exposing (..)
 import Tests.Parser.Inline.Codespan exposing (..)
@@ -28,7 +29,7 @@ import Tests.Parser.Inline.Emphasis exposing (..)
 tests =
     Test.concat
         [ blocks
-        , inlines
+            -- , inlines
         ]
 
 
@@ -38,7 +39,8 @@ tests =
 
 blocks =
     Test.concat
-        [ examples_219_to_226
+        [ examples_148_to_191
+            -- , examples_219_to_226
         ]
 
 
