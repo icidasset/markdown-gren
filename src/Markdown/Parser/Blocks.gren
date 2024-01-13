@@ -231,7 +231,7 @@ translateRawElement acc rawBlock rest =
                 Nothing ->
                     add
                         (Paragraph
-                            [ Text opening.source
+                            [ Text (Debug.log "NOPE" opening.source)
                             ]
                         )
 
@@ -440,7 +440,6 @@ rawBlockParser blocks =
           ]
             |> oneOf
             |> withOptionalLeadingSpaces
-            -- |> followedByABlankLine
             |> backtrackable
             |> block
 
@@ -450,49 +449,67 @@ rawBlockParser blocks =
           ]
             |> oneOf
             |> withOptionalLeadingSpaces
-            -- |> followedByABlankLine
             |> cannotInterruptParagraph
             |> backtrackable
             |> block
 
-        , -- If all fails, then it's a paragraph.
-          -- Try parsing one line at a time.
+        , -- If all fails, then it's inline text or a paragraph.
+          -- Try parsing one character at a time.
           succeed
-            (\line ->
+            (\char ->
                 case Array.popLast blocks of
+                    Just { last = RawHtmlOpening _ } ->
+                        blocks
+                            |> Array.pushLast (RawText char)
+                            |> Loop
+
+                    Just { last = RawText text, initial } ->
+                        initial
+                            |> Array.pushLast (RawText (text ++ char))
+                            |> Loop
+
                     Just { last = RawParagraph { closed = False } par, initial } ->
-                        if String.endsWith "\n" par then
-                            initial
-                                |> Array.pushLast (RawParagraph isClosed (String.dropRight 1 par))
-                                |> Array.pushLast (RawParagraph isOpen line)
-                                |> Loop
-                        else if par == "" then
-                            initial
-                                |> Array.pushLast (RawParagraph isOpen line)
-                                |> Loop
-                        else if line == "" then
-                            initial
-                                |> Array.pushLast (RawParagraph isClosed par)
-                                |> Loop
+                        -- if String.endsWith "\n" par then
+                        --     initial
+                        --         |> Array.pushLast (RawParagraph isClosed (String.dropRight 1 par))
+                        --         |> Array.pushLast (RawParagraph isOpen char)
+                        --         |> Loop
+                        -- else if par == "" then
+                        --     initial
+                        --         |> Array.pushLast (RawParagraph isOpen char)
+                        --         |> Loop
+                        -- else if char == "" then
+                        --     initial
+                        --         |> Array.pushLast (RawParagraph isClosed par)
+                        --         |> Loop
+                        -- else
+                        --     initial
+                        --         |> Array.pushLast (RawParagraph isOpen (par ++ char))
+                        --         |> Loop
+                        -- 
+                        if String.endsWith "\n" par && char == "\n" then
+                            if par == "\n" then
+                                Loop initial
+                            else
+                                initial
+                                    |> Array.pushLast (RawParagraph isClosed (String.dropRight 1 par))
+                                    |> Loop
+                        else if String.endsWith "\n" par && char == " " then
+                            Loop blocks
                         else
                             initial
-                                |> Array.pushLast (RawParagraph isOpen (par ++ "\n" ++ line))
+                                |> Array.pushLast (RawParagraph isOpen (par ++ char))
                                 |> Loop
 
                     _ ->
-                        if line == "" then
+                        if char == " " || char == "\n" then
                             Loop blocks
                         else
                             blocks
-                                |> Array.pushLast (RawParagraph isOpen line)
+                                |> Array.pushLast (RawParagraph isOpen char)
                                 |> Loop
             )
-            |. many (specificChar ' ')
-            |= getChompedString (chompUntilEndOr "\n")
-            |. oneOf
-                    [ chompIf isLineEnding
-                    , end
-                    ]
+            |= getChompedString chompOne
         ]
 
 
@@ -1063,13 +1080,15 @@ isHtmlType7 =
 
 
 closingTagParser =
-    map
-        (\{ tagName, origin } ->
-            { tagName = tagName
-            , source = origin
-            }
-        )
-        Html.closingTagParser
+    Html.closingTagParser
+        |> map
+                (\{ tagName, origin } ->
+                    { tagName = tagName
+                    , source = origin
+                    }
+                )
+        |> (\p -> succeed identity |= p)
+    -- |. spaces)
 
 
 openingTagParser =
@@ -1083,6 +1102,8 @@ openingTagParser =
         }
     ]
         |> oneOf
+        |> (\p -> succeed identity |= p)
+        -- |. spaces)
         |> map
                 (\{ tagName, attributes, closed, origin } ->
                     { tagName = tagName
