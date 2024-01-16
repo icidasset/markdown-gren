@@ -231,6 +231,11 @@ specificChar c =
     map (\_ -> c) (chompIfChar c)
 
 
+withOptionalLeadingSpaces : Parser a -> Parser a
+withOptionalLeadingSpaces p =
+    succeed identity |. many (specificChar ' ') |= p
+
+
 
 -- BINDS
 

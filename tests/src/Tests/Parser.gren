@@ -29,7 +29,7 @@ import Tests.Parser.Inline.Emphasis exposing (..)
 tests =
     Test.concat
         [ blocks
-            -- , inlines
+        , inlines
         ]
 
 
@@ -40,7 +40,7 @@ tests =
 blocks =
     Test.concat
         [ examples_148_to_191
-            -- , examples_219_to_226
+        , examples_219_to_226
         ]
 
 

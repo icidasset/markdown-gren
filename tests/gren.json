@@ -9,7 +9,7 @@
       "gren-lang/node": "3.0.1",
       "gren-lang/test": "2.0.0",
       "gren-lang/test-runner-node": "3.0.0",
-      "icidasset/html-gren": "4.0.0",
+      "icidasset/html-gren": "4.1.0",
       "icidasset/markdown-gren": "local:../"
     },
     "indirect": {

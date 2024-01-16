@@ -19,12 +19,12 @@ type Inline
         (Array Inline)
     | HardLineBreak
     | InlineCode String
-        -- | InlineHtml Html
-        -- | InlineHtmlNode
-        --     { tagName : String
-        --     , attributes : Dict String String
-        --     }
-        --     (Array Inline)
+    | InlineHtml Html
+    | InlineHtmlNode
+        { tagName : String
+        , attributes : Dict String String
+        }
+        (Array Inline)
     | Image
         { alt : String
         , url : String

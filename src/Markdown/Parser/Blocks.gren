@@ -9,6 +9,7 @@ module Markdown.Parser.Blocks exposing ( RawBlock(..), parse, parseRaw, parser, 
 import Dict exposing ( Dict )
 import Markdown.Block exposing ( Block(..) )
 import Markdown.Inline exposing ( Html(..), Inline(..) )
+import Markdown.Parser.Html as Html
 import Markdown.Parser.Inlines
 import Parser exposing (..)
 import Parser.Extra exposing (..)
@@ -33,16 +34,8 @@ type RawBlock
         }
         String
     | RawHtml Html
-    | RawHtmlOpening
-        { tagName : String
-        , attributes : Dict String String
-        , closed : Bool
-        , source : String
-        }
-    | RawHtmlClosing
-        { tagName : String
-        , source : String
-        }
+    | RawHtmlOpening Html.Opening
+    | RawHtmlClosing Html.Closing
     | RawHtmlText String
     | RawIndentedCode String
     | RawOrderedList
@@ -107,11 +100,7 @@ translateRaw :
     }
     -> { acc : Array Block
        , remainder : Array RawBlock
-       , closing :
-            Maybe
-                { tagName : String
-                , source : String
-                }
+       , closing : Maybe Html.Closing
        , end : Bool
        }
 translateRaw { acc, remainder } =
@@ -133,38 +122,34 @@ translateRawElement :
     -> Array RawBlock
     -> { acc : Array Block
        , remainder : Array RawBlock
-       , closing :
-            Maybe
-                { tagName : String
-                , source : String
-                }
+       , closing : Maybe Html.Closing
        , end : Bool
        }
 translateRawElement acc rawBlock rest =
     let
-        merge a =
+        merge a mergeAcc =
             case a of
                 Inline (Text t) ->
-                    case Array.popLast acc of
+                    case Array.popLast mergeAcc of
                         Just { last = Inline (Text lastText), initial } ->
                             Array.pushLast (Inline (Text (lastText ++ t))) initial
 
                         _ ->
-                            Array.pushLast a acc
+                            Array.pushLast a mergeAcc
 
                 _ ->
-                    Array.pushLast a acc
+                    Array.pushLast a mergeAcc
 
         add a =
             translateRaw
-                { acc = merge a
+                { acc = merge a acc
                 , remainder = rest
                 }
     in
     case rawBlock of
-        --
+        -- 
         -- BlockQuote
-        --
+        -- 
         RawBlockQuote string ->
             string
                 |> parse
@@ -172,9 +157,9 @@ translateRawElement acc rawBlock rest =
                 |> BlockQuote
                 |> add
 
-        --
+        -- 
         -- CodeBlock (fenced)
-        --
+        -- 
         RawFencedCode { body, language } ->
             { body = body
             , language = language
@@ -182,9 +167,9 @@ translateRawElement acc rawBlock rest =
                 |> CodeBlock
                 |> add
 
-        --
+        -- 
         -- Heading
-        --
+        -- 
         RawHeading props string ->
             string
                 |> Markdown.Parser.Inlines.parse
@@ -192,81 +177,39 @@ translateRawElement acc rawBlock rest =
                 |> Heading props
                 |> add
 
-        --
+        -- 
         -- HTML
-        --
+        -- 
         RawHtml html ->
             html
                 |> HtmlBlock
                 |> add
 
         RawHtmlOpening opening ->
-            let
-                openLoop args =
-                    let
-                        nested =
-                            translateRaw
-                                { acc = args.acc
-                                , remainder = args.remainder
-                                }
-                    in
-                    if Maybe.map .tagName nested.closing == Just opening.tagName then
-                        Just
-                            { acc = nested.acc -- TODO: process html text?
-                            , remainder = nested.remainder
-                            }
-                    else if nested.end then
-                        Nothing
-                    else
-                        openLoop
-                            { acc = nested.acc
-                            , remainder = nested.remainder
-                            }
-
-                maybe =
-                    if opening.closed then
-                        Just
-                            { acc = []
-                            , remainder = rest
-                            }
-                    else
-                        openLoop
-                            { acc = []
-                            , remainder = rest
-                            }
-            in
-            case maybe of
-                Just result ->
-                    result.acc
-                        |> HtmlBlockNode
-                                { tagName = opening.tagName
-                                , attributes = opening.attributes
-                                }
-                        |> (\a ->
-                                { acc = Array.pushLast a acc
-                                , remainder = result.remainder
-                                }
-                            )
-                        |> translateRaw
-
-                Nothing ->
-                    add (Inline (Text opening.source))
+            Html.manageOpening
+                { appendToPost = merge
+                , manageNext = translateRaw
+                , nodeCreator = HtmlBlockNode
+                , textCreator = Text >> Inline
+                }
+                { acc = acc
+                , remainder = rest
+                }
+                opening
 
         RawHtmlClosing closing ->
-            { acc = acc
-            , remainder = rest
-
-            , --
-              closing = Just closing
-            , end = False
-            }
+            Html.manageClosing
+                { acc = acc
+                , remainder = rest
+                }
+                closing
 
         RawHtmlText string ->
             add (Inline (Text string))
 
-        --
+        -- 
         -- CodeBlock (indented)
-        --
+        -- 
         RawIndentedCode body ->
             { body = body
             , language = Nothing
@@ -274,9 +217,9 @@ translateRawElement acc rawBlock rest =
                 |> CodeBlock
                 |> add
 
-        --
+        -- 
         -- OrderedLooseList & OrderedTightList
-        --
+        -- 
         RawOrderedList { start } rawListItems ->
             let
                 listItems =
@@ -297,9 +240,9 @@ translateRawElement acc rawBlock rest =
             in
             add block
 
-        --
+        -- 
         -- Paragraph
-        --
+        -- 
         RawParagraph _ string ->
             string
                 |> String.trimRight
@@ -308,15 +251,15 @@ translateRawElement acc rawBlock rest =
                 |> Paragraph
                 |> add
 
-        --
+        -- 
         -- ThematicBreak
-        --
+        -- 
         RawThematicBreak ->
             add ThematicBreak
 
-        --
+        -- 
         -- UnorderedLooseList & UnorderedTightList
-        --
+        -- 
         RawUnorderedList _ rawListItems ->
             let
                 listItems =
@@ -373,7 +316,7 @@ rawBlockParser blocks =
         [ -- Check if we reached the end
           map (\_ -> Done blocks) end
 
-        , --
+        , -- 
           block (backtrackable (cannotInterruptParagraph headingParser))
         , block (backtrackable blockQuoteParser)
         , block (backtrackable thematicBreakParser)
@@ -421,12 +364,12 @@ rawBlockParser blocks =
                                 succeed
                                     [ RawHtmlOpening
                                         { tagName = tagName
-                                        , attributes = htmlAttributesToDictionary attributes
+                                        , attributes = Html.attributesToDictionary attributes
                                         , closed = False
                                         , source = ""
                                         }
 
-                                    , --
+                                    , -- 
                                       (case descendants of
                                         Html.Regular array ->
                                             array
@@ -434,7 +377,7 @@ rawBlockParser blocks =
                                         |> Html.arrayToString
                                         |> RawHtmlText
 
-                                    , --
+                                    , -- 
                                       RawHtmlClosing
                                         { tagName = tagName
                                         , source = ""
@@ -448,20 +391,13 @@ rawBlockParser blocks =
             |> addBlocks
 
         , -- 2 -> 5
-          [ extractHtmlString Comment (backtrackable Html.commentParser)
-          , extractHtmlString ProcessingInstruction (backtrackable Html.processingInstructionParser)
-          , extractHtmlString Declaration (backtrackable Html.declarationParser)
-          , extractHtmlString Cdata (backtrackable Html.cdataParser)
-          ]
-            |> oneOf
-            |> withOptionalLeadingSpaces
-            |> backtrackable
+          Html.nonNodeParser
             |> map RawHtml
             |> block
 
         , -- 6
-          [ map RawHtmlOpening (isHtmlType6 (backtrackable openingTagParser))
-          , map RawHtmlClosing (isHtmlType6 (backtrackable closingTagParser))
+          [ map RawHtmlOpening (isHtmlType6 (backtrackable (Html.openingParser True)))
+          , map RawHtmlClosing (isHtmlType6 (backtrackable (Html.closingParser True)))
           ]
             |> oneOf
             |> withOptionalLeadingSpaces
@@ -469,8 +405,8 @@ rawBlockParser blocks =
             |> block
 
         , -- 7
-          [ map RawHtmlOpening (isHtmlType7 (backtrackable openingTagParser))
-          , map RawHtmlClosing (isHtmlType7 (backtrackable closingTagParser))
+          [ map RawHtmlOpening (isHtmlType7 (backtrackable (Html.openingParser True)))
+          , map RawHtmlClosing (isHtmlType7 (backtrackable (Html.closingParser True)))
           ]
             |> oneOf
             |> withOptionalLeadingSpaces
@@ -478,94 +414,57 @@ rawBlockParser blocks =
             |> backtrackable
             |> block
 
-            , -- If all fails, then it's inline text or a paragraph.
-              -- Try parsing one line at a time.
-              succeed
-                (\line ->
-                    case Array.popLast blocks of
-                        Just { last = RawHtmlOpening _ } ->
-                            if line == "" then
-                                Loop blocks
-                            else
-                                blocks
-                                    |> Array.pushLast (RawHtmlText line)
-                                    |> Loop
-                        Just { last = RawHtmlText text, initial } ->
-                            initial
-                                |> Array.pushLast (RawHtmlText (text ++ "\n" ++ line))
+        , -- If all fails, then it's inline text or a paragraph.
+          -- Try parsing one line at a time.
+          succeed
+            (\line ->
+                case Array.popLast blocks of
+                    Just { last = RawHtmlOpening _ } ->
+                        if line == "" then
+                            Loop blocks
+                        else
+                            blocks
+                                |> Array.pushLast (RawHtmlText line)
                                 |> Loop
-                        Just { last = RawParagraph { closed = False } par, initial } ->
-                            if String.endsWith "\n" par then
-                                initial
-                                    |> Array.pushLast (RawParagraph isClosed (String.dropRight 1 par))
-                                    |> Array.pushLast (RawParagraph isOpen line)
-                                    |> Loop
-                            else if par == "" then
-                                initial
-                                    |> Array.pushLast (RawParagraph isOpen line)
-                                    |> Loop
-                            else if line == "" then
-                                initial
-                                    |> Array.pushLast (RawParagraph isClosed par)
-                                    |> Loop
-                            else
-                                initial
-                                    |> Array.pushLast (RawParagraph isOpen (par ++ "\n" ++ line))
-                                    |> Loop
-                        _ ->
-                            if line == "" then
-                                Loop blocks
-                            else
-                                blocks
-                                    |> Array.pushLast (RawParagraph isOpen line)
-                                    |> Loop
-                )
-                |. many (specificChar ' ')
-                |= getChompedString (chompUntilEndOr "\n")
-                |. oneOf
-                        [ chompIf isLineEnding
-                        , end
-                        ]
 
-        -- , -- If all fails, then it's inline text or a paragraph.
-        --   -- Try parsing one character at a time.
-        --   succeed
-        --     (\char ->
-        --         case Array.popLast blocks of
-        --             Just { last = RawHtmlOpening _ } ->
-        --                 blocks
-        --                     |> Array.pushLast (RawHtmlText char)
-        --                     |> Loop
+                    Just { last = RawHtmlText text, initial } ->
+                        initial
+                            |> Array.pushLast (RawHtmlText (text ++ "\n" ++ line))
+                            |> Loop
 
-        --             Just { last = RawHtmlText text, initial } ->
-        --                 initial
-        --                     |> Array.pushLast (RawHtmlText (text ++ char))
-        --                     |> Loop
+                    Just { last = RawParagraph { closed = False } par, initial } ->
+                        if String.endsWith "\n" par then
+                            initial
+                                |> Array.pushLast (RawParagraph isClosed (String.dropRight 1 par))
+                                |> Array.pushLast (RawParagraph isOpen line)
+                                |> Loop
+                        else if par == "" then
+                            initial
+                                |> Array.pushLast (RawParagraph isOpen line)
+                                |> Loop
+                        else if line == "" then
+                            initial
+                                |> Array.pushLast (RawParagraph isClosed par)
+                                |> Loop
+                        else
+                            initial
+                                |> Array.pushLast (RawParagraph isOpen (par ++ "\n" ++ line))
+                                |> Loop
 
-        --             Just { last = RawParagraph { closed = False } par, initial } ->
-        --                 if String.endsWith "\n" par && char == "\n" then
-        --                     if par == "\n" then
-        --                         Loop initial
-        --                     else
-        --                         initial
-        --                             |> Array.pushLast (RawParagraph isClosed (String.dropRight 1 par))
-        --                             |> Loop
-        --                 else if String.endsWith "\n" par && char == " " then
-        --                     Loop blocks
-        --                 else
-        --                     initial
-        --                         |> Array.pushLast (RawParagraph isOpen (par ++ char))
-        --                         |> Loop
-
-        --             _ ->
-        --                 if char == " " || char == "\n" then
-        --                     Loop blocks
-        --                 else
-        --                     blocks
-        --                         |> Array.pushLast (RawParagraph isOpen char)
-        --                         |> Loop
-        --     )
-        --     |= getChompedString chompOne
+                    _ ->
+                        if line == "" then
+                            Loop blocks
+                        else
+                            blocks
+                                |> Array.pushLast (RawParagraph isOpen line)
+                                |> Loop
+            )
+            |. many (specificChar ' ')
+            |= getChompedString (chompUntilEndOr "\n")
+            |. oneOf
+                    [ chompIf isLineEnding
+                    , end
+                    ]
         ]
 
 
@@ -989,47 +888,6 @@ lastBlockWasList constructor { currentList, lastList, allBlocksExceptLast, allBl
 -- ㊙️
 
 
-extractHtmlString fn =
-    map
-        (\html ->
-            case html of
-                Html.Cdata s ->
-                    fn s
-
-                Html.Comment s ->
-                    fn s
-
-                Html.Declaration s ->
-                    fn s
-
-                Html.Node { tagName } _ _ ->
-                    fn tagName
-
-                Html.ProcessingInstruction s ->
-                    fn s
-
-                Html.TextNode s ->
-                    fn s
-        )
-
-
-followedByABlankLine p =
-    succeed identity |= p |. symbol "\n\n"
-
-
-htmlAttributesToDictionary =
-    Array.foldl
-        (\attr acc ->
-            case attr of
-                Html.Attribute k v ->
-                    Dict.insert k v acc
-
-                _ ->
-                    acc
-        )
-        Dict.empty
-
-
 htmlType6TagNames =
     [ "address"
     , "article"
@@ -1133,40 +991,3 @@ isHtmlType7 =
             else
                 problem ""
         )
-
-
-closingTagParser =
-    Html.closingTagParser
-        |> map
-                (\{ tagName, origin } ->
-                    { tagName = tagName
-                    , source = origin
-                    }
-                )
-        |> (\p -> succeed identity |= p |. spaces)
-
-
-openingTagParser =
-    [ backtrackable
-        (Html.openingTagParser
-            { closed = False
-            }
-        )
-    , Html.openingTagParser
-        { closed = True
-        }
-    ]
-        |> oneOf
-        |> (\p -> succeed identity |= p |. spaces)
-        |> map
-                (\{ tagName, attributes, closed, origin } ->
-                    { tagName = tagName
-                    , attributes = htmlAttributesToDictionary attributes
-                    , closed = closed
-                    , source = origin
-                    }
-                )
-
-
-withOptionalLeadingSpaces p =
-    succeed identity |. notMoreThanXSpaces 3 |= p

@@ -6,10 +6,27 @@ module Markdown.Parser.Inlines exposing ( parse, parser )
 
 -}
 
-import Markdown.Inline exposing ( Inline(..) )
+import Markdown.Inline exposing ( Html(..), Inline(..) )
+import Markdown.Parser.Html as Html
 import Maybe.Extra as Maybe
 import Parser exposing (..)
 import Parser.Extra exposing (..)
+import Transmutable.Html as Html
+import Transmutable.Html.Interior as Html
+import Transmutable.Html.Parser as Html
+
+
+
+-- 🌳
+
+
+{-|-}
+type RawInline
+    = RawHtml Html
+    | RawHtmlOpening Html.Opening
+    | RawHtmlClosing Html.Closing
+    | RawHtmlText String
+    | RawInline Inline
 
 
 
@@ -31,20 +48,108 @@ parse =
 -}
 parser : Parser (Array Inline)
 parser =
-    loop [] (parserLoop [])
+    map rawToInlines rawParser
 
 
-parserLoop : Array (Parser Inline) -> Array Inline -> Parser (Step (Array Inline) (Array Inline))
-parserLoop customInlineParsers inlineElements =
+rawToInlines : Array RawInline -> Array Inline
+rawToInlines rawInlines =
+    { acc = []
+    , remainder = rawInlines
+    }
+        |> translateRaw
+        |> .acc
+
+
+translateRaw :
+    { acc : Array Inline
+    , remainder : Array RawInline
+    }
+    -> { acc : Array Inline
+       , remainder : Array RawInline
+       , closing : Maybe Html.Closing
+       , end : Bool
+       }
+translateRaw { acc, remainder } =
+    case Array.popFirst remainder of
+        Just { first, rest } ->
+            translateRawElement acc first rest
+
+        Nothing ->
+            { acc = acc
+            , remainder = []
+            , closing = Nothing
+            , end = True
+            }
+
+
+translateRawElement :
+    Array Inline
+    -> RawInline
+    -> Array RawInline
+    -> { acc : Array Inline
+       , remainder : Array RawInline
+       , closing : Maybe Html.Closing
+       , end : Bool
+       }
+translateRawElement acc rawElement rest =
     let
+        merge a mergeAcc =
+            Array.pushLast a mergeAcc
+
+        add a =
+            translateRaw
+                { acc = merge a acc
+                , remainder = rest
+                }
+    in
+    case rawElement of
+        RawInline inline ->
+            add inline
+
+        -- 
+        -- HTML
+        -- 
+        RawHtml html ->
+            html
+                |> InlineHtml
+                |> add
+
+        RawHtmlOpening opening ->
+            Html.manageOpening
+                { appendToPost = merge
+                , manageNext = translateRaw
+                , nodeCreator = InlineHtmlNode
+                , textCreator = Text
+                }
+                { acc = acc
+                , remainder = rest
+                }
+                opening
+
+        RawHtmlClosing closing ->
+            Html.manageClosing
+                { acc = acc
+                , remainder = rest
+                }
+                closing
+
+        RawHtmlText string ->
+            add (Text string)
+
+
+rawParser : Parser (Array RawInline)
+rawParser =
+    loop [] (rawParserLoop [])
+
+
+rawParserLoop : Array (Parser RawInline) -> Array RawInline -> Parser (Step (Array RawInline) (Array RawInline))
+rawParserLoop customInlineParsers inlineElements =
+    let
+        inlines =
+            map (\a -> Loop (inlineElements ++ a))
+
         inline =
-            map
-                (\el ->
-                    [ el
-                    ]
-                        |> (\a -> inlineElements ++ a)
-                        |> Loop
-                )
+            map Array.singleton >> inlines
 
         lastElement =
             Array.last inlineElements
@@ -57,15 +162,65 @@ parserLoop customInlineParsers inlineElements =
           backtrackable (inlineCodeParser inlineElements lastElement)
 
         , -- 
-          inline (backtrackable (emphasisWithUnderscoreParser lastElement))
-        , inline (backtrackable (emphasisWithStarParser lastElement))
-        , inline (backtrackable hardLineBreakParser)
-        , inline (backtrackable imageParser)
-        , inline (backtrackable linkParser)
-        , inline (backtrackable autolinksParser)
+          inline (map RawInline (backtrackable (emphasisWithUnderscoreParser lastElement)))
+        , inline (map RawInline (backtrackable (emphasisWithStarParser lastElement)))
+        , inline (map RawInline (backtrackable hardLineBreakParser))
+        , inline (map RawInline (backtrackable imageParser))
+        , inline (map RawInline (backtrackable linkParser))
+        , inline (map RawInline (backtrackable autolinksParser))
+            -- , --
+            --   inline (backtrackable (oneOf customInlineParsers))
+            -- 
+
+        , -- HTML
+          Html.nonRecursiveNodeParser
+            |> withOptionalLeadingSpaces
+            |> andThen
+                    (\html ->
+                        case html of
+                            Html.Node { tagName } attributes descendants ->
+                                succeed
+                                    [ RawHtmlOpening
+                                        { tagName = tagName
+                                        , attributes = Html.attributesToDictionary attributes
+                                        , closed = False
+                                        , source = ""
+                                        }
+
+                                    , -- 
+                                      (case descendants of
+                                        Html.Regular array ->
+                                            array
+                                      )
+                                        |> Html.arrayToString
+                                        |> RawHtmlText
+
+                                    , -- 
+                                      RawHtmlClosing
+                                        { tagName = tagName
+                                        , source = ""
+                                        }
+                                    ]
+
+                            _ ->
+                                problem ""
+                    )
+            |> backtrackable
+            |> inlines
 
         , -- 
-          inline (backtrackable (oneOf customInlineParsers))
+          Html.nonNodeParser
+            |> map RawHtml
+            |> inline
+
+        , -- 
+          [ map RawHtmlOpening (backtrackable (Html.openingParser False))
+          , map RawHtmlClosing (backtrackable (Html.closingParser False))
+          ]
+            |> oneOf
+            |> withOptionalLeadingSpaces
+            |> backtrackable
+            |> inline
 
         , -- 
           textLoopParser inlineElements lastElement
@@ -117,7 +272,7 @@ autolinksParser =
         ]
 
 
-emphasisParser : Char -> Int -> Maybe Inline -> Parser Inline
+emphasisParser : Char -> Int -> Maybe RawInline -> Parser Inline
 emphasisParser emphasisChar addToLeftFlank lastElement =
     let
         emphasisCharString =
@@ -130,7 +285,7 @@ emphasisParser emphasisChar addToLeftFlank lastElement =
 
         originalPrecedingChar =
             case lastElement of
-                Just (Text t) ->
+                Just (RawInline (Text t)) ->
                     Array.last (String.toArray t)
 
                 _ ->
@@ -281,7 +436,7 @@ emphasisParser emphasisChar addToLeftFlank lastElement =
                                                                                         , followingChar = followingChar
                                                                                         }
                                                                                 then
-                                                                                    wrapUp entireText
+                                                                                    wrapUp entireText chompOptsWithFlank
                                                                                 else if
                                                                                     isOpening
                                                                                         { precedingChar = lastChar
@@ -414,74 +569,81 @@ emphasisParser emphasisChar addToLeftFlank lastElement =
                         times =
                             String.length flank
 
-                        wrapUp emphasisedText =
-                            if String.contains "`" emphasisedText then
-                                problem ""
-                            else
-                                case emphasisedText of
-                                    "" ->
-                                        problem "Nothing to emphasise"
+                        wrapUp emphasisedText chomptOpts =
+                            case emphasisedText of
+                                "" ->
+                                    problem "Nothing to emphasise"
 
-                                    _ ->
-                                        let
-                                            parseResult =
-                                                emphasisedText
-                                                    |> parse
-                                                    |> Result.withDefault []
+                                _ ->
+                                    let
+                                        parseResult =
+                                            emphasisedText
+                                                |> parse
+                                                |> Result.withDefault []
 
-                                            otherEmphasisCharString =
-                                                if emphasisChar == '*' then
-                                                    "_"
-                                                else
-                                                    "*"
-                                        in
-                                        case
-                                            { parseResult = parseResult
-                                            , anyExcessOpeningEmphasis =
-                                                case Array.first parseResult of
-                                                    Just (Text t) ->
-                                                        String.startsWith emphasisCharString t
+                                        otherEmphasisCharString =
+                                            if emphasisChar == '*' then
+                                                "_"
+                                            else
+                                                "*"
+                                    in
+                                    case
+                                        { parseResult = parseResult
+                                        , anyExcessOpeningEmphasis =
+                                            case Array.first parseResult of
+                                                Just (Text t) ->
+                                                    String.startsWith emphasisCharString t
 
-                                                    _ ->
-                                                        False
-                                            , anyExcessClosingEmphasis =
-                                                case Array.last parseResult of
-                                                    Just (Text t) ->
-                                                        String.endsWith emphasisCharString t
+                                                _ ->
+                                                    False
+                                        , anyExcessClosingEmphasis =
+                                            case Array.last parseResult of
+                                                Just (Text t) ->
+                                                    String.endsWith emphasisCharString t
 
-                                                    _ ->
-                                                        False
-                                            }
-                                        of
-                                            { anyExcessOpeningEmphasis = True } ->
-                                                problem ""
+                                                _ ->
+                                                    False
+                                        , endsWithInlineCodeChar =
+                                            case Array.last parseResult of
+                                                Just (Text t) ->
+                                                    String.endsWith "`" t
 
-                                            { anyExcessClosingEmphasis = True } ->
-                                                problem ""
+                                                _ ->
+                                                    False
+                                        }
+                                    of
+                                        { anyExcessOpeningEmphasis = True } ->
+                                            problem ""
 
-                                            { parseResult = [ Emphasis nestedOpts nestedContent ] } ->
-                                                if nestedOpts.char == emphasisChar then
-                                                    nestedContent
-                                                        |> Emphasis
-                                                                { char = emphasisChar
-                                                                , times = times + nestedOpts.times
-                                                                }
-                                                        |> succeed
-                                                else
-                                                    parseResult
-                                                        |> Emphasis
-                                                                { char = emphasisChar
-                                                                , times = times
-                                                                }
-                                                        |> succeed
+                                        { anyExcessClosingEmphasis = True } ->
+                                            problem ""
 
-                                            _ ->
+                                        { endsWithInlineCodeChar = True } ->
+                                            chompUntilNextClosing chomptOpts
+
+                                        { parseResult = [ Emphasis nestedOpts nestedContent ] } ->
+                                            if nestedOpts.char == emphasisChar then
+                                                nestedContent
+                                                    |> Emphasis
+                                                            { char = emphasisChar
+                                                            , times = times + nestedOpts.times
+                                                            }
+                                                    |> succeed
+                                            else
                                                 parseResult
                                                     |> Emphasis
                                                             { char = emphasisChar
                                                             , times = times
                                                             }
                                                     |> succeed
+
+                                        _ ->
+                                            parseResult
+                                                |> Emphasis
+                                                        { char = emphasisChar
+                                                        , times = times
+                                                        }
+                                                |> succeed
                     in
                     oneOf
                         [ succeed identity
@@ -502,12 +664,12 @@ emphasisParser emphasisChar addToLeftFlank lastElement =
                 )
 
 
-emphasisWithStarParser : Maybe Inline -> Parser Inline
+emphasisWithStarParser : Maybe RawInline -> Parser Inline
 emphasisWithStarParser =
     emphasisParser '*' 0
 
 
-emphasisWithUnderscoreParser : Maybe Inline -> Parser Inline
+emphasisWithUnderscoreParser : Maybe RawInline -> Parser Inline
 emphasisWithUnderscoreParser =
     emphasisParser '_' 0
 
@@ -545,7 +707,7 @@ imageParser =
                 )
 
 
-inlineCodeParser : Array Inline -> Maybe Inline -> Parser (Step (Array Inline) (Array Inline))
+inlineCodeParser : Array RawInline -> Maybe RawInline -> Parser (Step (Array RawInline) (Array RawInline))
 inlineCodeParser inlineElements lastElement =
     succeed
         (\o s ->
@@ -607,7 +769,7 @@ inlineCodeParser inlineElements lastElement =
                                             )
                                         |> String.replace "\n" " "
                             in
-                            Loop (Array.pushLast (InlineCode finalCode) inlineElements)
+                            Loop (Array.pushLast (RawInline (InlineCode finalCode)) inlineElements)
                     in
                     oneOf
                         [ -- Either it's actual inline code:
@@ -656,7 +818,7 @@ linkParser =
 {-| Parses one character at a time, so that it can try the other inline parsers
 after each character. Concatenates `Text` automatically.
 -}
-textLoopParser : Array Inline -> Maybe Inline -> Parser (Step (Array Inline) (Array Inline))
+textLoopParser : Array RawInline -> Maybe RawInline -> Parser (Step (Array RawInline) (Array RawInline))
 textLoopParser inlineElements lastElement =
     succeed (textLoop inlineElements lastElement) |= getChompedString chompOne
 
@@ -670,7 +832,7 @@ isSchemeChar c =
     Char.isAlphaNum c || c == '+' || c == '.' || c == '-'
 
 
-textLoop : Array Inline -> Maybe Inline -> String -> Step (Array Inline) (Array Inline)
+textLoop : Array RawInline -> Maybe RawInline -> String -> Step (Array RawInline) (Array RawInline)
 textLoop inlineElements lastElement text =
     case text of
         "" ->
@@ -678,8 +840,8 @@ textLoop inlineElements lastElement text =
 
         _ ->
             case lastElement of
-                Just (Text previousText) ->
-                    Loop (Array.pushLast (Text (previousText ++ text)) (Array.dropLast 1 inlineElements))
+                Just (RawInline (Text previousText)) ->
+                    Loop (Array.pushLast (RawInline (Text (previousText ++ text))) (Array.dropLast 1 inlineElements))
 
                 _ ->
-                    Loop (Array.pushLast (Text text) inlineElements)
+                    Loop (Array.pushLast (RawInline (Text text)) inlineElements)

@@ -1130,7 +1130,18 @@ examples_350_to_480 =
             -- "*<img src=\"foo\" title=\"*\"/>" -> *<img src="foo" title="*"/>
             -- "**<a href=\"**\">" -> **<a href="**">
             -- "__<a href=\"__\">" -> __<a href="__">
-            -- "*a `*`*" -> <em>a <code>*</code></em>
+
+        , -- 
+          testInline
+            "*a `*`*"
+            (Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "a "
+                , InlineCode "*"
+                ]
+            )
             -- "_a `_`_" -> <em>a <code>_</code></em>
             -- "**a<http://foo.bar/?q=**>" -> **a<a href="http://foo.bar/?q=**">http://foo.bar/?q=**</a>
             -- "__a<http://foo.bar/?q=__>" -> __a<a href="http://foo.bar/?q=__">http://foo.bar/?q=__</a>

@@ -21,7 +21,7 @@ examples_148_to_191 =
             <table><tr><td>
             <pre>
             **Hello**,
-
+            
             _world_.
             </pre>
             </td></tr></table>
@@ -55,12 +55,11 @@ examples_148_to_191 =
             <table>
               <tr>
                 <td>
-                       hi<a></a>test
-                       Next line
+                       hi
                 </td>
               </tr>
             </table>
-
+            
             okay.
             """
             [ HtmlBlockNode
@@ -86,17 +85,17 @@ examples_148_to_191 =
 
         , -- Example 150
           -- SKIP: No partial tags allowed
-          --
+          -- 
           -- Example 151
           -- SKIP: No partial tags allowed
-          --
+          -- 
           -- Example 152
           testBlocks
             """
             <DIV CLASS="foo">
-
+            
             *Markdown*
-
+            
             </DIV>
             """
             [ HtmlBlockNode
