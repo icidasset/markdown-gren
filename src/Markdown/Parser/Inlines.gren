@@ -193,7 +193,8 @@ rawParserLoop customInlineParsers inlineElements =
                                             array
                                       )
                                         |> Html.arrayToString
-                                        |> RawHtmlText
+                                        |> Text
+                                        |> RawInline
 
                                     , -- 
                                       RawHtmlClosing
@@ -214,8 +215,8 @@ rawParserLoop customInlineParsers inlineElements =
             |> inline
 
         , -- 
-          [ map RawHtmlOpening (backtrackable (Html.openingParser False))
-          , map RawHtmlClosing (backtrackable (Html.closingParser False))
+          [ map RawHtmlOpening (backtrackable Html.openingParser)
+          , map RawHtmlClosing (backtrackable Html.closingParser)
           ]
             |> oneOf
             |> withOptionalLeadingSpaces

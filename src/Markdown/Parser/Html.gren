@@ -36,7 +36,7 @@ type alias Opening =
 -- ✏️
 
 
-closingParser removeLaggingSpaces =
+closingParser =
     Html.closingTagParser
         |> map
                 (\{ tagName, origin } ->
@@ -44,14 +44,9 @@ closingParser removeLaggingSpaces =
                     , source = origin
                     }
                 )
-        |> (if removeLaggingSpaces then
-                \p -> succeed identity |= p |. spaces
-             else
-                identity
-            )
 
 
-openingParser removeLaggingSpaces =
+openingParser =
     [ backtrackable
         (Html.openingTagParser
             { closed = False
@@ -62,11 +57,6 @@ openingParser removeLaggingSpaces =
         }
     ]
         |> oneOf
-        |> (if removeLaggingSpaces then
-                \p -> succeed identity |= p |. spaces
-             else
-                identity
-            )
         |> map
                 (\{ tagName, attributes, closed, origin } ->
                     { tagName = tagName

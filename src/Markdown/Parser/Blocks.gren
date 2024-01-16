@@ -24,7 +24,8 @@ import Transmutable.Html.Parser as Html
 
 {-|-}
 type RawBlock
-    = RawBlockQuote String
+    = RawBlock Block
+    | RawBlockQuote String
     | RawFencedCode
         { body : String
         , language : Maybe String
@@ -129,6 +130,9 @@ translateRawElement acc rawBlock rest =
     let
         merge a mergeAcc =
             case a of
+                Inline (Text "") ->
+                    mergeAcc
+
                 Inline (Text t) ->
                     case Array.popLast mergeAcc of
                         Just { last = Inline (Text lastText), initial } ->
@@ -141,12 +145,20 @@ translateRawElement acc rawBlock rest =
                     Array.pushLast a mergeAcc
 
         add a =
+            addArray
+                [ a
+                ]
+
+        addArray a =
             translateRaw
-                { acc = merge a acc
+                { acc = Array.foldl merge acc a
                 , remainder = rest
                 }
     in
     case rawBlock of
+        RawBlock block ->
+            add block
+
         -- 
         -- BlockQuote
         -- 
@@ -205,7 +217,19 @@ translateRawElement acc rawBlock rest =
                 closing
 
         RawHtmlText string ->
-            add (Inline (Text string))
+            let
+                trimmed =
+                    String.trimLeft string
+            in
+            if String.startsWith "\n\n" string then
+                string
+                    |> parse
+                    |> Result.withDefault
+                            [ Inline (Text trimmed)
+                            ]
+                    |> addArray
+            else
+                add (Inline (Text trimmed))
 
         -- 
         -- CodeBlock (indented)
@@ -375,7 +399,9 @@ rawBlockParser blocks =
                                             array
                                       )
                                         |> Html.arrayToString
-                                        |> RawHtmlText
+                                        |> Text
+                                        |> Inline
+                                        |> RawBlock
 
                                     , -- 
                                       RawHtmlClosing
@@ -396,8 +422,8 @@ rawBlockParser blocks =
             |> block
 
         , -- 6
-          [ map RawHtmlOpening (isHtmlType6 (backtrackable (Html.openingParser True)))
-          , map RawHtmlClosing (isHtmlType6 (backtrackable (Html.closingParser True)))
+          [ map RawHtmlOpening (isHtmlType6 (backtrackable Html.openingParser))
+          , map RawHtmlClosing (isHtmlType6 (backtrackable Html.closingParser))
           ]
             |> oneOf
             |> withOptionalLeadingSpaces
@@ -405,8 +431,8 @@ rawBlockParser blocks =
             |> block
 
         , -- 7
-          [ map RawHtmlOpening (isHtmlType7 (backtrackable (Html.openingParser True)))
-          , map RawHtmlClosing (isHtmlType7 (backtrackable (Html.closingParser True)))
+          [ map RawHtmlOpening (isHtmlType7 (backtrackable Html.openingParser))
+          , map RawHtmlClosing (isHtmlType7 (backtrackable Html.closingParser))
           ]
             |> oneOf
             |> withOptionalLeadingSpaces
@@ -420,12 +446,12 @@ rawBlockParser blocks =
             (\line ->
                 case Array.popLast blocks of
                     Just { last = RawHtmlOpening _ } ->
-                        if line == "" then
-                            Loop blocks
-                        else
-                            blocks
-                                |> Array.pushLast (RawHtmlText line)
-                                |> Loop
+                        -- if line == "" then
+                        --     Loop blocks
+                        -- else
+                        blocks
+                            |> Array.pushLast (RawHtmlText line)
+                            |> Loop
 
                     Just { last = RawHtmlText text, initial } ->
                         initial
