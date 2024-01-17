@@ -1,0 +1,231 @@
+module Markdown.Parser.Html exposing (..)
+
+{-| HTML parsers and helpers.
+
+-}
+
+import Dict exposing ( Dict )
+import Markdown.Block exposing ( Block(..) )
+import Markdown.Inline exposing ( Html(..), Inline(..) )
+import Parser exposing (..)
+import Parser.Extra exposing (..)
+import Transmutable.Html as Html
+import Transmutable.Html.Interior as Html
+import Transmutable.Html.Parser as Html
+
+
+
+-- 🌳
+
+
+type alias Closing =
+    { tagName : String
+    , source : String
+    }
+
+
+type alias Opening =
+    { tagName : String
+    , attributes : Dict String String
+    , closed : Bool
+    , source : String
+    }
+
+
+
+-- ✏️
+
+
+closingParser =
+    Html.closingTagParser
+        |> map
+                (\{ tagName, origin } ->
+                    { tagName = tagName
+                    , source = origin
+                    }
+                )
+
+
+openingParser =
+    [ backtrackable
+        (Html.openingTagParser
+            { closed = False
+            }
+        )
+    , Html.openingTagParser
+        { closed = True
+        }
+    ]
+        |> oneOf
+        |> map
+                (\{ tagName, attributes, closed, origin } ->
+                    { tagName = tagName
+                    , attributes = attributesToDictionary attributes
+                    , closed = closed
+                    , source = origin
+                    }
+                )
+
+
+nonNodeParser =
+    [ extractHtmlString Comment (backtrackable Html.commentParser)
+    , extractHtmlString ProcessingInstruction (backtrackable Html.processingInstructionParser)
+    , extractHtmlString Declaration (backtrackable Html.declarationParser)
+    , extractHtmlString Cdata (backtrackable Html.cdataParser)
+    ]
+        |> oneOf
+        |> withOptionalLeadingSpaces
+        |> backtrackable
+
+
+
+-- 🛠️
+
+
+attributesToDictionary =
+    Array.foldl
+        (\attr acc ->
+            case attr of
+                Html.Attribute k v ->
+                    Dict.insert k v acc
+
+                _ ->
+                    acc
+        )
+        Dict.empty
+
+
+extractHtmlString fn =
+    map
+        (\html ->
+            case html of
+                Html.Cdata s ->
+                    fn s
+
+                Html.Comment s ->
+                    fn s
+
+                Html.Declaration s ->
+                    fn s
+
+                Html.Node { tagName } _ _ ->
+                    fn tagName
+
+                Html.ProcessingInstruction s ->
+                    fn s
+
+                Html.TextNode s ->
+                    fn s
+        )
+
+
+manageOpening :
+    { appendToPost : post -> Array post -> Array post
+    , manageNext :
+        { acc : Array post
+        , remainder : Array pre
+        }
+        -> { acc : Array post
+           , remainder : Array pre
+           , closing :
+                Maybe
+                    { tagName : String
+                    , source : String
+                    }
+           , end : Bool
+           }
+    , nodeCreator :
+        { tagName : String
+        , attributes : Dict String String
+        }
+        -> Array post
+        -> post
+    , textCreator : String -> post
+    }
+    -> { acc : Array post
+       , remainder : Array pre
+       }
+    -> Opening
+    -> { acc : Array post
+       , remainder : Array pre
+       , closing : Maybe Closing
+       , end : Bool
+       }
+manageOpening { appendToPost, manageNext, nodeCreator, textCreator } { acc, remainder } opening =
+    let
+        add a =
+            manageNext
+                { acc = appendToPost a acc
+                , remainder = remainder
+                }
+
+        loop args =
+            let
+                nextResult =
+                    manageNext
+                        { acc = args.acc
+                        , remainder = args.remainder
+                        }
+            in
+            if Maybe.map .tagName nextResult.closing == Just opening.tagName then
+                Just
+                    { acc = nextResult.acc
+                    , remainder = nextResult.remainder
+                    }
+            else if nextResult.end then
+                Nothing
+            else
+                loop
+                    { acc = nextResult.acc
+                    , remainder = nextResult.remainder
+                    }
+
+        maybe =
+            if opening.closed then
+                Just
+                    { acc = []
+                    , remainder = remainder
+                    }
+            else
+                loop
+                    { acc = []
+                    , remainder = remainder
+                    }
+    in
+    case maybe of
+        Just result ->
+            -- TODO: parse nextResult/nested?
+            result.acc
+                |> nodeCreator
+                        { tagName = opening.tagName
+                        , attributes = opening.attributes
+                        }
+                |> (\a ->
+                        { acc = Array.pushLast a acc
+                        , remainder = result.remainder
+                        }
+                    )
+                |> manageNext
+
+        Nothing ->
+            add (textCreator opening.source)
+
+
+manageClosing :
+    { acc : Array post
+    , remainder : Array pre
+    }
+    -> Closing
+    -> { acc : Array post
+       , remainder : Array pre
+       , closing : Maybe Closing
+       , end : Bool
+       }
+manageClosing { acc, remainder } closing =
+    { acc = acc
+    , remainder = remainder
+
+    , -- 
+      closing = Just closing
+    , end = False
+    }

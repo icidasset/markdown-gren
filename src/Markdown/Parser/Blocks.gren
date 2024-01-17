@@ -6,11 +6,16 @@ module Markdown.Parser.Blocks exposing ( RawBlock(..), parse, parseRaw, parser, 
 
 -}
 
+import Dict exposing ( Dict )
 import Markdown.Block exposing ( Block(..) )
-import Markdown.Inline exposing ( Inline )
+import Markdown.Inline exposing ( Html(..), Inline(..) )
+import Markdown.Parser.Html as Html
 import Markdown.Parser.Inlines
 import Parser exposing (..)
 import Parser.Extra exposing (..)
+import Transmutable.Html as Html
+import Transmutable.Html.Interior as Html
+import Transmutable.Html.Parser as Html
 
 
 
@@ -19,7 +24,8 @@ import Parser.Extra exposing (..)
 
 {-|-}
 type RawBlock
-    = RawBlockQuote String
+    = RawBlock Block
+    | RawBlockQuote String
     | RawFencedCode
         { body : String
         , language : Maybe String
@@ -28,6 +34,10 @@ type RawBlock
         { level : Int
         }
         String
+    | RawHtml Html
+    | RawHtmlOpening Html.Opening
+    | RawHtmlClosing Html.Closing
+    | RawHtmlText String
     | RawIndentedCode String
     | RawOrderedList
         { leadingSpaces : Int
@@ -73,120 +83,222 @@ parseRaw =
 -}
 parser : Parser (Array Block)
 parser =
-    map
-        (Array.foldl
-            (\rawBlock blocks ->
-                case rawBlock of
-                    -- 
-                    -- BlockQuote
-                    -- 
-                    RawBlockQuote string ->
-                        let
-                            innerBlocks =
-                                Result.withDefault [] (parse string)
-                        in
-                        Array.pushLast (BlockQuote innerBlocks) blocks
+    map rawToBlocks (loop [] rawBlockParser)
 
-                    -- 
-                    -- CodeBlock (fenced)
-                    -- 
-                    RawFencedCode { body, language } ->
-                        Array.pushLast
-                            (CodeBlock
-                                { body = body
-                                , language = language
-                                }
-                            )
-                            blocks
 
-                    -- 
-                    -- Heading
-                    -- 
-                    RawHeading props string ->
-                        let
-                            inlines =
-                                string
-                                    |> Markdown.Parser.Inlines.parse
-                                    |> Result.withDefault []
-                        in
-                        Array.pushLast (Heading props inlines) blocks
+rawToBlocks : Array RawBlock -> Array Block
+rawToBlocks rawBlocks =
+    { acc = []
+    , remainder = rawBlocks
+    }
+        |> translateRaw
+        |> .acc
 
-                    -- 
-                    -- CodeBlock (indented)
-                    -- 
-                    RawIndentedCode body ->
-                        Array.pushLast
-                            (CodeBlock
-                                { body = body
-                                , language = Nothing
-                                }
-                            )
-                            blocks
 
-                    -- 
-                    -- OrderedLooseList & OrderedTightList
-                    -- 
-                    RawOrderedList { start } rawListItems ->
-                        let
-                            listItems =
-                                Array.map (String.join "\n") rawListItems
+translateRaw :
+    { acc : Array Block
+    , remainder : Array RawBlock
+    }
+    -> { acc : Array Block
+       , remainder : Array RawBlock
+       , closing : Maybe Html.Closing
+       , end : Bool
+       }
+translateRaw { acc, remainder } =
+    case Array.popFirst remainder of
+        Just { first, rest } ->
+            translateRawElement acc first rest
 
-                            isLooseList =
-                                Array.any (\a -> Array.length a > 1) rawListItems
+        Nothing ->
+            { acc = acc
+            , remainder = []
+            , closing = Nothing
+            , end = True
+            }
 
-                            props =
-                                { start = start
-                                }
 
-                            block =
-                                if isLooseList then
-                                    OrderedLooseList props (Array.map (String.trim >> parse >> Result.withDefault []) listItems)
-                                else
-                                    OrderedTightList props (Array.map (String.trim >> Markdown.Parser.Inlines.parse >> Result.withDefault []) listItems)
-                        in
-                        Array.pushLast block blocks
+translateRawElement :
+    Array Block
+    -> RawBlock
+    -> Array RawBlock
+    -> { acc : Array Block
+       , remainder : Array RawBlock
+       , closing : Maybe Html.Closing
+       , end : Bool
+       }
+translateRawElement acc rawBlock rest =
+    let
+        merge a mergeAcc =
+            case a of
+                Inline (Text "") ->
+                    mergeAcc
 
-                    -- 
-                    -- Paragraph
-                    -- 
-                    RawParagraph _ string ->
-                        let
-                            inlines =
-                                string
-                                    |> String.trimRight
-                                    |> Markdown.Parser.Inlines.parse
-                                    |> Result.withDefault []
-                        in
-                        Array.pushLast (Paragraph inlines) blocks
+                Inline (Text t) ->
+                    case Array.popLast mergeAcc of
+                        Just { last = Inline (Text lastText), initial } ->
+                            Array.pushLast (Inline (Text (lastText ++ t))) initial
 
-                    -- 
-                    -- ThematicBreak
-                    -- 
-                    RawThematicBreak ->
-                        Array.pushLast ThematicBreak blocks
+                        _ ->
+                            Array.pushLast a mergeAcc
 
-                    -- 
-                    -- UnorderedLooseList & UnorderedTightList
-                    -- 
-                    RawUnorderedList _ rawListItems ->
-                        let
-                            listItems =
-                                Array.map (String.join "\n") rawListItems
+                _ ->
+                    Array.pushLast a mergeAcc
 
-                            isLooseList =
-                                Array.any (\a -> Array.length a > 1) rawListItems
+        add a =
+            addArray
+                [ a
+                ]
 
-                            block =
-                                if isLooseList then
-                                    UnorderedLooseList (Array.map (String.trim >> parse >> Result.withDefault []) listItems)
-                                else
-                                    UnorderedTightList (Array.map (String.trim >> Markdown.Parser.Inlines.parse >> Result.withDefault []) listItems)
-                        in
-                        Array.pushLast block blocks
-            )
-            []
-        )
-        (loop [] rawBlockParser)
+        addArray a =
+            translateRaw
+                { acc = Array.foldl merge acc a
+                , remainder = rest
+                }
+    in
+    case rawBlock of
+        RawBlock block ->
+            add block
+
+        -- 
+        -- BlockQuote
+        -- 
+        RawBlockQuote string ->
+            string
+                |> parse
+                |> Result.withDefault []
+                |> BlockQuote
+                |> add
+
+        -- 
+        -- CodeBlock (fenced)
+        -- 
+        RawFencedCode { body, language } ->
+            { body = body
+            , language = language
+            }
+                |> CodeBlock
+                |> add
+
+        -- 
+        -- Heading
+        -- 
+        RawHeading props string ->
+            string
+                |> Markdown.Parser.Inlines.parse
+                |> Result.withDefault []
+                |> Heading props
+                |> add
+
+        -- 
+        -- HTML
+        -- 
+        RawHtml html ->
+            html
+                |> HtmlBlock
+                |> add
+
+        RawHtmlOpening opening ->
+            Html.manageOpening
+                { appendToPost = merge
+                , manageNext = translateRaw
+                , nodeCreator = HtmlBlockNode
+                , textCreator = Text >> Inline
+                }
+                { acc = acc
+                , remainder = rest
+                }
+                opening
+
+        RawHtmlClosing closing ->
+            Html.manageClosing
+                { acc = acc
+                , remainder = rest
+                }
+                closing
+
+        RawHtmlText string ->
+            let
+                trimmed =
+                    String.trimLeft string
+            in
+            if String.startsWith "\n\n" string then
+                string
+                    |> parse
+                    |> Result.withDefault
+                            [ Inline (Text trimmed)
+                            ]
+                    |> addArray
+            else
+                add (Inline (Text trimmed))
+
+        -- 
+        -- CodeBlock (indented)
+        -- 
+        RawIndentedCode body ->
+            { body = body
+            , language = Nothing
+            }
+                |> CodeBlock
+                |> add
+
+        -- 
+        -- OrderedLooseList & OrderedTightList
+        -- 
+        RawOrderedList { start } rawListItems ->
+            let
+                listItems =
+                    Array.map (String.join "\n") rawListItems
+
+                isLooseList =
+                    Array.any (\a -> Array.length a > 1) rawListItems
+
+                props =
+                    { start = start
+                    }
+
+                block =
+                    if isLooseList then
+                        OrderedLooseList props (Array.map (String.trim >> parse >> Result.withDefault []) listItems)
+                    else
+                        OrderedTightList props (Array.map (String.trim >> Markdown.Parser.Inlines.parse >> Result.withDefault []) listItems)
+            in
+            add block
+
+        -- 
+        -- Paragraph
+        -- 
+        RawParagraph _ string ->
+            string
+                |> String.trimRight
+                |> Markdown.Parser.Inlines.parse
+                |> Result.withDefault []
+                |> Paragraph
+                |> add
+
+        -- 
+        -- ThematicBreak
+        -- 
+        RawThematicBreak ->
+            add ThematicBreak
+
+        -- 
+        -- UnorderedLooseList & UnorderedTightList
+        -- 
+        RawUnorderedList _ rawListItems ->
+            let
+                listItems =
+                    Array.map (String.join "\n") rawListItems
+
+                isLooseList =
+                    Array.any (\a -> Array.length a > 1) rawListItems
+
+                block =
+                    if isLooseList then
+                        UnorderedLooseList (Array.map (String.trim >> parse >> Result.withDefault []) listItems)
+                    else
+                        UnorderedTightList (Array.map (String.trim >> Markdown.Parser.Inlines.parse >> Result.withDefault []) listItems)
+            in
+            add block
 
 
 
@@ -200,6 +312,9 @@ rawBlockParser blocks =
     let
         block =
             map (\b -> Loop (Array.pushLast b blocks))
+
+        addBlocks =
+            map (\b -> Loop (blocks ++ b))
 
         lastBlockWasFinishedParagraphOrSomethingElse =
             case Array.popLast blocks of
@@ -217,10 +332,69 @@ rawBlockParser blocks =
                 p
             else
                 skip
+
+        lastBlock =
+            Array.last blocks
+
+        isPartOfListParser leadingSpaces items =
+            items
+                |> Array.last
+                |> Maybe.andThen Array.first
+                |> Maybe.map
+                        (\line ->
+                            let
+                                lineIndent =
+                                    String.length line - String.length (String.trimLeft line)
+
+                                totalSpacesNeeded =
+                                    leadingSpaces + 2 + lineIndent
+                            in
+                            succeed identity
+                                |. specificAmountOf totalSpacesNeeded (specificChar ' ')
+                                |= getChompedString (chompUntilEndOr "\n")
+                                |. oneOf
+                                        [ symbol "\n"
+                                        , end
+                                        ]
+                                |> identity
+                        )
+                |> Maybe.withDefault (problem "")
+                |> andThen
+                        (\line ->
+                            case Array.popLast items of
+                                Just { last, initial } ->
+                                    last
+                                        |> Array.pushLast line
+                                        |> (\a -> Array.pushLast a initial)
+                                        |> succeed
+
+                                Nothing ->
+                                    problem ""
+                        )
+                |> backtrackable
     in
     oneOf
         [ -- Check if we reached the end
-          map (\_ -> Done blocks) (succeed identity |. end)
+          map (\_ -> Done blocks) end
+
+        , -- Part of list?
+          case Array.popLast blocks of
+            Just { last = RawOrderedList params items, initial } ->
+                items
+                    |> isPartOfListParser params.leadingSpaces
+                    |> map (RawOrderedList params)
+                    |> map (\a -> Array.pushLast a initial)
+                    |> map Loop
+
+            Just { last = RawUnorderedList params items, initial } ->
+                items
+                    |> isPartOfListParser params.leadingSpaces
+                    |> map (RawUnorderedList params)
+                    |> map (\a -> Array.pushLast a initial)
+                    |> map Loop
+
+            _ ->
+                problem ""
 
         , -- 
           block (backtrackable (cannotInterruptParagraph headingParser))
@@ -237,26 +411,109 @@ rawBlockParser blocks =
           block (backtrackable fencedCodeParser)
 
         , -- Indented code
-          succeed
-            (\line ->
-                case Array.popLast blocks of
-                    Just { last = RawIndentedCode ic, initial } ->
-                        initial
-                            |> Array.pushLast (RawIndentedCode (ic ++ "\n" ++ line))
-                            |> Loop
+          case lastBlock of
+            Just (RawHtmlOpening _) ->
+                problem ""
 
-                    _ ->
-                        blocks
-                            |> Array.pushLast (RawIndentedCode line)
-                            |> Loop
-            )
-            |= backtrackable (cannotInterruptParagraph indentedCodeParser)
+            Just (RawHtmlText _) ->
+                problem ""
 
-        , -- If all fails, then it's a paragraph.
+            _ ->
+                succeed
+                    (\line ->
+                        case Array.popLast blocks of
+                            Just { last = RawIndentedCode ic, initial } ->
+                                initial
+                                    |> Array.pushLast (RawIndentedCode (ic ++ "\n" ++ line))
+                                    |> Loop
+
+                            _ ->
+                                blocks
+                                    |> Array.pushLast (RawIndentedCode line)
+                                    |> Loop
+                    )
+                    |= backtrackable (cannotInterruptParagraph indentedCodeParser)
+
+        , -- HTML: 1
+          Html.nonRecursiveNodeParser
+            |> withOptionalLeadingSpaces
+            |> andThen
+                    (\html ->
+                        case html of
+                            Html.Node { tagName } attributes descendants ->
+                                succeed
+                                    [ RawHtmlOpening
+                                        { tagName = tagName
+                                        , attributes = Html.attributesToDictionary attributes
+                                        , closed = False
+                                        , source = ""
+                                        }
+
+                                    , -- 
+                                      (case descendants of
+                                        Html.Regular array ->
+                                            array
+                                      )
+                                        |> Html.arrayToString
+                                        |> Text
+                                        |> Inline
+                                        |> RawBlock
+
+                                    , -- 
+                                      RawHtmlClosing
+                                        { tagName = tagName
+                                        , source = ""
+                                        }
+                                    ]
+
+                            _ ->
+                                problem ""
+                    )
+            |> backtrackable
+            |> addBlocks
+
+        , -- 2 -> 5
+          Html.nonNodeParser
+            |> map RawHtml
+            |> block
+
+        , -- 6
+          [ map RawHtmlOpening (isHtmlType6 (backtrackable Html.openingParser))
+          , map RawHtmlClosing (isHtmlType6 (backtrackable Html.closingParser))
+          ]
+            |> oneOf
+            |> withOptionalLeadingSpaces
+            |> backtrackable
+            |> block
+
+        , -- 7
+          [ map RawHtmlOpening (isHtmlType7 (backtrackable Html.openingParser))
+          , map RawHtmlClosing (isHtmlType7 (backtrackable Html.closingParser))
+          ]
+            |> oneOf
+            |> withOptionalLeadingSpaces
+            |> cannotInterruptParagraph
+            |> backtrackable
+            |> block
+
+        , -- If all fails, then it's inline text or a paragraph.
           -- Try parsing one line at a time.
           succeed
             (\line ->
                 case Array.popLast blocks of
+                    Just { last = RawHtmlOpening _ } ->
+                        -- if line == "" then
+                        --     Loop blocks
+                        -- else
+                        blocks
+                            |> Array.pushLast (RawHtmlText line)
+                            |> Loop
+
+                    Just { last = RawHtmlText text, initial } ->
+                        initial
+                            |> Array.pushLast (RawHtmlText (text ++ "\n" ++ line))
+                            |> Loop
+
                     Just { last = RawParagraph { closed = False } par, initial } ->
                         if String.endsWith "\n" par then
                             initial
@@ -622,7 +879,10 @@ unorderedListParser =
                                     (\listChar ->
                                         succeed identity
                                             |= getChompedString (chompUntilEndOr "\n")
-                                            |. chompIf isLineEnding
+                                            |. oneOf
+                                                    [ chompIf isLineEnding
+                                                    , end
+                                                    ]
                                             |> map
                                                     (\line ->
                                                         { leadingSpaces = Array.length leadingSpaces
@@ -713,6 +973,72 @@ lastBlockWasList constructor { currentList, lastList, allBlocksExceptLast, allBl
 -- ㊙️
 
 
+htmlType6TagNames =
+    [ "address"
+    , "article"
+    , "aside"
+    , "base"
+    , "basefont"
+    , "blockquote"
+    , "body"
+    , "caption"
+    , "center"
+    , "col"
+    , "colgroup"
+    , "dd"
+    , "details"
+    , "dialog"
+    , "dir"
+    , "div"
+    , "dl"
+    , "dt"
+    , "fieldset"
+    , "figcaption"
+    , "figure"
+    , "footer"
+    , "form"
+    , "frame"
+    , "frameset"
+    , "h1"
+    , "h2"
+    , "h3"
+    , "h4"
+    , "h5"
+    , "h6"
+    , "head"
+    , "header"
+    , "hr"
+    , "html"
+    , "iframe"
+    , "legend"
+    , "li"
+    , "link"
+    , "main"
+    , "menu"
+    , "menuitem"
+    , "nav"
+    , "noframes"
+    , "ol"
+    , "optgroup"
+    , "option"
+    , "p"
+    , "param"
+    , "section"
+    , "source"
+    , "summary"
+    , "table"
+    , "tbody"
+    , "td"
+    , "tfoot"
+    , "th"
+    , "thead"
+    , "title"
+    , "tr"
+    , "track"
+    , "ul"
+    ]
+
+
 isClosed =
     { closed = True
     }
@@ -721,3 +1047,32 @@ isClosed =
 isOpen =
     { closed = False
     }
+
+
+isHtmlType6 =
+    andThen
+        (\a ->
+            if Array.member a.tagName htmlType6TagNames then
+                succeed a
+            else
+                problem ""
+        )
+
+
+isHtmlType7 =
+    andThen
+        (\a ->
+            if
+                Array.member
+                    a.tagName
+                    [ "pre"
+                    , "script"
+                    , "style"
+                    , "textarea"
+                    ]
+                    == False
+            then
+                succeed a
+            else
+                problem ""
+        )

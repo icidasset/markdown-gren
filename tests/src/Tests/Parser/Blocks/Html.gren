@@ -1,0 +1,120 @@
+module Tests.Parser.Blocks.Html exposing ( examples_148_to_191 )
+
+import Dict
+import Expect
+import Markdown
+import Markdown.Block exposing ( Block(..) )
+import Markdown.Inline exposing ( Html(..), Inline(..) )
+import Markdown.Parser.Inlines as Inlines
+import Test exposing (..)
+import Tests.Parser.Helpers exposing (..)
+
+
+examples_148_to_191 =
+    describe
+        "HTML Blocks"
+        [ -- Example 148:
+          -- Does NOT work according to spec,
+          -- `<pre>` content is never parsed (despite the blank lines).
+          testBlocks
+            """
+            <table><tr><td>
+            <pre>
+            **Hello**,
+            
+            _world_.
+            </pre>
+            </td></tr></table>
+            """
+            [ HtmlBlockNode
+                { tagName = "table"
+                , attributes = Dict.empty
+                }
+                [ HtmlBlockNode
+                    { tagName = "tr"
+                    , attributes = Dict.empty
+                    }
+                    [ HtmlBlockNode
+                        { tagName = "td"
+                        , attributes = Dict.empty
+                        }
+                        [ HtmlBlockNode
+                            { tagName = "pre"
+                            , attributes = Dict.empty
+                            }
+                            [ Inline (Text "\n**Hello**,\n\n_world_.\n")
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+
+        , -- Example 149
+          testBlocks
+            """
+            <table>
+              <tr>
+                <td>
+                       hi
+                </td>
+              </tr>
+            </table>
+            
+            okay.
+            """
+            [ HtmlBlockNode
+                { tagName = "table"
+                , attributes = Dict.empty
+                }
+                [ HtmlBlockNode
+                    { tagName = "tr"
+                    , attributes = Dict.empty
+                    }
+                    [ HtmlBlockNode
+                        { tagName = "td"
+                        , attributes = Dict.empty
+                        }
+                        [ Inline (Text "hi")
+                        ]
+                    ]
+                ]
+            , Paragraph
+                [ Text "okay."
+                ]
+            ]
+
+        , -- Example 150
+          -- SKIP: No partial tags allowed
+          -- 
+          -- Example 151
+          -- SKIP: No partial tags allowed
+          -- 
+          -- Example 152
+          testBlocks
+            """
+            <DIV CLASS="foo">
+            
+            *Markdown*
+            
+            </DIV>
+            """
+            [ HtmlBlockNode
+                { tagName = "DIV"
+                , attributes =
+                    Dict.fromArray
+                        [ { key = "CLASS"
+                          , value = "foo"
+                          }
+                        ]
+                }
+                [ Paragraph
+                    [ Emphasis
+                        { char = '*'
+                        , times = 1
+                        }
+                        [ Text "Markdown"
+                        ]
+                    ]
+                ]
+            ]
+        ]

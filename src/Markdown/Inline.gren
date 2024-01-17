@@ -1,11 +1,12 @@
-module Markdown.Inline exposing ( Inline(..) )
+module Markdown.Inline exposing ( Inline(..), Html(..) )
 
 {-| Inline-level types and operations.
 
-@docs Inline
+@docs Inline, Html
 
 -}
 
+import Dict exposing ( Dict )
 
 
 {-| Inline elements.
@@ -18,6 +19,12 @@ type Inline
         (Array Inline)
     | HardLineBreak
     | InlineCode String
+    | InlineHtml Html
+    | InlineHtmlNode
+        { tagName : String
+        , attributes : Dict String String
+        }
+        (Array Inline)
     | Image
         { alt : String
         , url : String
@@ -27,3 +34,12 @@ type Inline
         , url : String
         }
     | Text String
+
+
+{-| Non-recursive HTML elements.
+-}
+type Html
+    = Cdata String
+    | Comment String
+    | Declaration String
+    | ProcessingInstruction String

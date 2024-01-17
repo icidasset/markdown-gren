@@ -6,7 +6,8 @@ module Markdown.Block exposing ( Block(..) )
 
 -}
 
-import Markdown.Inline exposing ( Inline )
+import Dict exposing ( Dict )
+import Markdown.Inline exposing ( Html, Inline )
 
 
 {-| Block elements.
@@ -21,6 +22,13 @@ type Block
         { level : Int
         }
         (Array Inline)
+    | HtmlBlock Html
+    | HtmlBlockNode
+        { tagName : String
+        , attributes : Dict String String
+        }
+        (Array Block)
+    | Inline Inline
     | OrderedLooseList
         { start : Int
         }

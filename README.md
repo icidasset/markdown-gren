@@ -5,10 +5,9 @@ A commonmark markdown package for [Gren](https://gren-lang.org/).
 
 ## Commonmark
 
-This package implements pretty much the entire Commonmark spec,
-but there are a few small differences:
+This package implements the entire Commonmark spec.
 
-- It doesn't parse open HTML tags that are not closed.
+There are some differences regarding the HTML parsing though.
 
 
 ## To do
@@ -29,8 +28,8 @@ but there are a few small differences:
 - [x] Images
 - [x] Links
 - [x] Autolinks
+- [x] Raw HTML
 - [ ] Link reference definitions
-- [ ] Raw HTML
 - [ ] Setext headings
 
 
@@ -48,6 +47,6 @@ but there are a few small differences:
 - [ ] Images
 - [ ] Links
 - [x] Autolinks
-- [ ] Link reference definitions
 - [ ] Raw HTML
+- [ ] Link reference definitions
 - [ ] Setext headings
