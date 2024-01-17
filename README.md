@@ -28,8 +28,8 @@ There are some differences regarding the HTML parsing though.
 - [x] Images
 - [x] Links
 - [x] Autolinks
+- [x] Raw HTML
 - [ ] Link reference definitions
-- [ ] Raw HTML
 - [ ] Setext headings
 
 
@@ -47,6 +47,6 @@ There are some differences regarding the HTML parsing though.
 - [ ] Images
 - [ ] Links
 - [x] Autolinks
-- [ ] Link reference definitions
 - [ ] Raw HTML
+- [ ] Link reference definitions
 - [ ] Setext headings

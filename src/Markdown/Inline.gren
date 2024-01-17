@@ -2,7 +2,7 @@ module Markdown.Inline exposing ( Inline(..), Html(..) )
 
 {-| Inline-level types and operations.
 
-@docs Inline
+@docs Inline, Html
 
 -}
 

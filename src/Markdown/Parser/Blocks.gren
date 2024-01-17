@@ -159,9 +159,9 @@ translateRawElement acc rawBlock rest =
         RawBlock block ->
             add block
 
-        --
+        -- 
         -- BlockQuote
-        --
+        -- 
         RawBlockQuote string ->
             string
                 |> parse
@@ -169,9 +169,9 @@ translateRawElement acc rawBlock rest =
                 |> BlockQuote
                 |> add
 
-        --
+        -- 
         -- CodeBlock (fenced)
-        --
+        -- 
         RawFencedCode { body, language } ->
             { body = body
             , language = language
@@ -179,9 +179,9 @@ translateRawElement acc rawBlock rest =
                 |> CodeBlock
                 |> add
 
-        --
+        -- 
         -- Heading
-        --
+        -- 
         RawHeading props string ->
             string
                 |> Markdown.Parser.Inlines.parse
@@ -189,9 +189,9 @@ translateRawElement acc rawBlock rest =
                 |> Heading props
                 |> add
 
-        --
+        -- 
         -- HTML
-        --
+        -- 
         RawHtml html ->
             html
                 |> HtmlBlock
@@ -231,9 +231,9 @@ translateRawElement acc rawBlock rest =
             else
                 add (Inline (Text trimmed))
 
-        --
+        -- 
         -- CodeBlock (indented)
-        --
+        -- 
         RawIndentedCode body ->
             { body = body
             , language = Nothing
@@ -241,9 +241,9 @@ translateRawElement acc rawBlock rest =
                 |> CodeBlock
                 |> add
 
-        --
+        -- 
         -- OrderedLooseList & OrderedTightList
-        --
+        -- 
         RawOrderedList { start } rawListItems ->
             let
                 listItems =
@@ -264,9 +264,9 @@ translateRawElement acc rawBlock rest =
             in
             add block
 
-        --
+        -- 
         -- Paragraph
-        --
+        -- 
         RawParagraph _ string ->
             string
                 |> String.trimRight
@@ -275,15 +275,15 @@ translateRawElement acc rawBlock rest =
                 |> Paragraph
                 |> add
 
-        --
+        -- 
         -- ThematicBreak
-        --
+        -- 
         RawThematicBreak ->
             add ThematicBreak
 
-        --
+        -- 
         -- UnorderedLooseList & UnorderedTightList
-        --
+        -- 
         RawUnorderedList _ rawListItems ->
             let
                 listItems =
@@ -396,7 +396,7 @@ rawBlockParser blocks =
             _ ->
                 problem ""
 
-        , --
+        , -- 
           block (backtrackable (cannotInterruptParagraph headingParser))
         , block (backtrackable blockQuoteParser)
         , block (backtrackable thematicBreakParser)
@@ -449,7 +449,7 @@ rawBlockParser blocks =
                                         , source = ""
                                         }
 
-                                    , --
+                                    , -- 
                                       (case descendants of
                                         Html.Regular array ->
                                             array
@@ -459,7 +459,7 @@ rawBlockParser blocks =
                                         |> Inline
                                         |> RawBlock
 
-                                    , --
+                                    , -- 
                                       RawHtmlClosing
                                         { tagName = tagName
                                         , source = ""
