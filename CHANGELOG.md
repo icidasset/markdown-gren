@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.0.0
+
+Fixed some issues with `toHtmlWithOptions` and reversed the parameter order.
+
+
 ## 2.1.0
 
 Adds `toHtmlWithOptions` among other related functions and types.

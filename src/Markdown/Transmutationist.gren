@@ -30,9 +30,8 @@ This function uses the default options:
 
 -}
 toHtml : Block -> Html msg
-toHtml block =
+toHtml =
     toHtmlWithOptions
-        block
         { imageLoadingStrategy = defaultImageLoadingStrategy
         }
 
@@ -40,11 +39,17 @@ toHtml block =
 {-| Transform a Markdown block into HTML, with options.
 -}
 toHtmlWithOptions :
-    Block
-    -> { imageLoadingStrategy : LoadingStrategy
-       }
+    { imageLoadingStrategy : LoadingStrategy
+    }
+    -> Block
     -> Html msg
-toHtmlWithOptions block options =
+toHtmlWithOptions options block =
+    let
+        transmuteInlines =
+            inlineToHtmlWithOptions
+                { imageLoadingStrategy = options.imageLoadingStrategy
+                }
+    in
     case block of
         BlockQuote blocks ->
             Html.blockquote [] (Array.map toHtml blocks)
@@ -89,7 +94,7 @@ toHtmlWithOptions block options =
                     Html.p
             )
                 []
-                (Array.map inlineToHtml inlines)
+                (Array.map transmuteInlines inlines)
 
         HtmlBlock html ->
             inlineMarkdownHtmlToHtml html
@@ -98,10 +103,7 @@ toHtmlWithOptions block options =
             htmlNode props (Array.map toHtml blocks)
 
         Inline inline ->
-            inlineToHtmlWithOptions
-                inline
-                { imageLoadingStrategy = options.imageLoadingStrategy
-                }
+            transmuteInlines inline
 
         OrderedLooseList { start } listItems ->
             Html.ol
@@ -113,10 +115,10 @@ toHtmlWithOptions block options =
             Html.ol
                 [ A.attribute "start" (String.fromInt start)
                 ]
-                (Array.map (\inlines -> Html.li [] (Array.map inlineToHtml inlines)) listItems)
+                (Array.map (\inlines -> Html.li [] (Array.map transmuteInlines inlines)) listItems)
 
         Paragraph inlines ->
-            Html.p [] (Array.map inlineToHtml inlines)
+            Html.p [] (Array.map transmuteInlines inlines)
 
         ThematicBreak ->
             Html.hr [] []
@@ -125,7 +127,7 @@ toHtmlWithOptions block options =
             Html.ul [] (Array.map (\blocks -> Html.li [] (Array.map toHtml blocks)) listItems)
 
         UnorderedTightList listItems ->
-            Html.ul [] (Array.map (\inlines -> Html.li [] (Array.map inlineToHtml inlines)) listItems)
+            Html.ul [] (Array.map (\inlines -> Html.li [] (Array.map transmuteInlines inlines)) listItems)
 
 
 {-| Transform an inline Markdown element into HTML.
@@ -135,9 +137,8 @@ This function uses the default options:
 
 -}
 inlineToHtml : Inline -> Html msg
-inlineToHtml inline =
+inlineToHtml =
     inlineToHtmlWithOptions
-        inline
         { imageLoadingStrategy = defaultImageLoadingStrategy
         }
 
@@ -145,11 +146,18 @@ inlineToHtml inline =
 {-| Transform an inline Markdown element into HTML, with options.
 -}
 inlineToHtmlWithOptions :
-    Inline
-    -> { imageLoadingStrategy : LoadingStrategy
-       }
+    { imageLoadingStrategy : LoadingStrategy
+    }
+    -> Inline
     -> Html msg
-inlineToHtmlWithOptions inline { imageLoadingStrategy } =
+inlineToHtmlWithOptions options inline =
+    let
+        transmuteInlines =
+            inlineToHtmlWithOptions options
+
+        { imageLoadingStrategy } =
+            options
+    in
     case inline of
         Emphasis { times } inlines ->
             (case times of
@@ -160,7 +168,7 @@ inlineToHtmlWithOptions inline { imageLoadingStrategy } =
                     Html.strong
             )
                 []
-                (Array.map inlineToHtml inlines)
+                (Array.map transmuteInlines inlines)
 
         HardLineBreak ->
             Html.br [] []
@@ -175,7 +183,7 @@ inlineToHtmlWithOptions inline { imageLoadingStrategy } =
             inlineMarkdownHtmlToHtml html
 
         InlineHtmlNode props inlines ->
-            htmlNode props (Array.map inlineToHtml inlines)
+            htmlNode props (Array.map transmuteInlines inlines)
 
         Image { alt, url } ->
             Html.img
