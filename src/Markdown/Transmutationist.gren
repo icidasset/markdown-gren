@@ -1,8 +1,12 @@
-module Markdown.Transmutationist exposing ( toHtml, inlineToHtml )
+module Markdown.Transmutationist exposing ( toHtml, toHtmlWithOptions, inlineToHtml, inlineToHtmlWithOptions, LoadingStrategy(..), loadingStrategyToString )
 
 {-| Markdown transformations.
 
-@docs toHtml, inlineToHtml
+@docs toHtml, toHtmlWithOptions, inlineToHtml, inlineToHtmlWithOptions
+
+## Loading Strategy
+
+@docs LoadingStrategy, loadingStrategyToString
 
 -}
 
@@ -13,10 +17,34 @@ import Transmutable.Html as Html exposing ( Html, text )
 import Transmutable.Html.Attributes as A
 
 
+{-|-}
+type LoadingStrategy
+    = Eager
+    | Lazy
+
+
 {-| Transform a Markdown block into HTML.
+
+This function uses the default options:
+- `imageLoadingStrategy`: `eager`, the browser default.
+
 -}
 toHtml : Block -> Html msg
 toHtml block =
+    toHtmlWithOptions
+        block
+        { imageLoadingStrategy = defaultImageLoadingStrategy
+        }
+
+
+{-| Transform a Markdown block into HTML, with options.
+-}
+toHtmlWithOptions :
+    Block
+    -> { imageLoadingStrategy : LoadingStrategy
+       }
+    -> Html msg
+toHtmlWithOptions block options =
     case block of
         BlockQuote blocks ->
             Html.blockquote [] (Array.map toHtml blocks)
@@ -70,7 +98,10 @@ toHtml block =
             htmlNode props (Array.map toHtml blocks)
 
         Inline inline ->
-            inlineToHtml inline
+            inlineToHtmlWithOptions
+                inline
+                { imageLoadingStrategy = options.imageLoadingStrategy
+                }
 
         OrderedLooseList { start } listItems ->
             Html.ol
@@ -98,9 +129,27 @@ toHtml block =
 
 
 {-| Transform an inline Markdown element into HTML.
+
+This function uses the default options:
+- `imageLoadingStrategy`: `eager`, the browser default.
+
 -}
 inlineToHtml : Inline -> Html msg
 inlineToHtml inline =
+    inlineToHtmlWithOptions
+        inline
+        { imageLoadingStrategy = defaultImageLoadingStrategy
+        }
+
+
+{-| Transform an inline Markdown element into HTML, with options.
+-}
+inlineToHtmlWithOptions :
+    Inline
+    -> { imageLoadingStrategy : LoadingStrategy
+       }
+    -> Html msg
+inlineToHtmlWithOptions inline { imageLoadingStrategy } =
     case inline of
         Emphasis { times } inlines ->
             (case times of
@@ -132,6 +181,7 @@ inlineToHtml inline =
             Html.img
                 [ A.alt alt
                 , A.src url
+                , A.attribute "loading" (loadingStrategyToString imageLoadingStrategy)
                 ]
                 []
 
@@ -144,6 +194,21 @@ inlineToHtml inline =
 
         Text t ->
             text t
+
+
+
+-- 🛠️
+
+
+{-|-}
+loadingStrategyToString : LoadingStrategy -> String
+loadingStrategyToString strat =
+    case strat of
+        Eager ->
+            "eager"
+
+        Lazy ->
+            "lazy"
 
 
 
@@ -173,3 +238,11 @@ inlineMarkdownHtmlToHtml html =
 
         ProcessingInstruction s ->
             Html.processingInstruction s
+
+
+
+-- ㊙️
+
+
+defaultImageLoadingStrategy =
+    Eager

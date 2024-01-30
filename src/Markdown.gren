@@ -35,6 +35,13 @@ parse =
 
 
 {-| Transform a Markdown block into HTML.
+
+This function uses the default options:
+- `imageLoadingStrategy`: `eager`, the browser default.
+
+If you want to use custom options, check out the `toHtmlWithOptions`
+function in the `Markdown.Transmutationist` module.
+
 -}
 toHtml : Block -> Html msg
 toHtml =
