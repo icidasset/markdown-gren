@@ -4,7 +4,7 @@
     "name": "icidasset/markdown-gren",
     "summary": "Markdown parser and printer",
     "license": "BSD-3-Clause",
-    "version": "3.0.0",
+    "version": "3.1.0",
     "exposed-modules": [
         "Markdown",
         "Markdown.Block",

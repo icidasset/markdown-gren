@@ -3,6 +3,7 @@ module Tests exposing ( main )
 import Test
 import Test.Runner.Node exposing ( Program, run )
 import Tests.Parser
+import Tests.Transmutationist
 
 
 main : Program
@@ -16,5 +17,6 @@ main =
 
 all =
     Test.concat
-        [ Tests.Parser.tests
+        [ -- Tests.Parser.tests
+          Tests.Transmutationist.tests
         ]

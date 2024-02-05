@@ -1,8 +1,14 @@
-module Markdown.Transmutationist exposing ( toHtml, toHtmlWithOptions, inlineToHtml, inlineToHtmlWithOptions, LoadingStrategy(..), loadingStrategyToString )
+module Markdown.Transmutationist exposing ( toHtml, toHtmlWithOptions, inlineToHtml, inlineToHtmlWithOptions, LoadingStrategy(..), loadingStrategyToString, blockDecoder, inlineDecoder, htmlDecoder, toJson, inlineToJson, htmlToJson, blockType, inlineType, htmlType )
 
 {-| Markdown transformations.
 
+## HTML
+
 @docs toHtml, toHtmlWithOptions, inlineToHtml, inlineToHtmlWithOptions
+
+## JSON
+
+@docs blockDecoder, inlineDecoder, htmlDecoder, toJson, inlineToJson, htmlToJson, blockType, inlineType, htmlType
 
 ## Loading Strategy
 
@@ -11,16 +17,26 @@ module Markdown.Transmutationist exposing ( toHtml, toHtmlWithOptions, inlineToH
 -}
 
 import Dict
+import Json.Decode exposing ( Decoder )
+import Json.Encode as Json
 import Markdown.Block exposing ( Block(..) )
 import Markdown.Inline exposing ( Html(..), Inline(..) )
 import Transmutable.Html as Html exposing ( Html, text )
 import Transmutable.Html.Attributes as A
 
 
+
+-- 🌳
+
+
 {-|-}
 type LoadingStrategy
     = Eager
     | Lazy
+
+
+
+-- HTML
 
 
 {-| Transform a Markdown block into HTML.
@@ -205,6 +221,466 @@ inlineToHtmlWithOptions options inline =
 
 
 
+-- JSON / FROM
+
+
+{-|-}
+blockDecoder : Decoder Block
+blockDecoder =
+    Json.Decode.string
+        |> Json.Decode.field "typeBlock"
+        |> Json.Decode.andThen (blockDecoderWithType >> Json.Decode.field "data")
+        |> withJsonType "block"
+
+
+blockDecoderWithType : String -> Decoder Block
+blockDecoderWithType typ =
+    case typ of
+        "block-quote" ->
+            blockDecoder
+                |> Json.Decode.array
+                |> Json.Decode.field "blocks"
+                |> Json.Decode.map BlockQuote
+
+        "code-block" ->
+            Json.Decode.map2
+                (\body language ->
+                    CodeBlock
+                        { body = body
+                        , language = language
+                        }
+                )
+                (Json.Decode.field "body" Json.Decode.string)
+                (Json.Decode.field "language" (Json.Decode.maybe Json.Decode.string))
+
+        "heading" ->
+            Json.Decode.map2
+                (\level inlines ->
+                    Heading
+                        { level = level
+                        }
+                        inlines
+                )
+                (Json.Decode.field "level" Json.Decode.int)
+                (Json.Decode.field "inlines" (Json.Decode.array inlineDecoder))
+
+        "html-block" ->
+            Json.Decode.map HtmlBlock htmlDecoder
+
+        "html-block-node" ->
+            Json.Decode.map3
+                (\tagName attributes blocks ->
+                    HtmlBlockNode
+                        { tagName = tagName
+                        , attributes = attributes
+                        }
+                        blocks
+                )
+                (Json.Decode.field "tagName" Json.Decode.string)
+                (Json.Decode.field "attributes" (Json.Decode.dict Json.Decode.string))
+                (Json.Decode.field "blocks" (Json.Decode.array blockDecoder))
+
+        "inline" ->
+            inlineDecoder
+                |> Json.Decode.field "inline"
+                |> Json.Decode.map Inline
+
+        "ordered-loose-list" ->
+            Json.Decode.map2
+                (\start items ->
+                    OrderedLooseList
+                        { start = start
+                        }
+                        items
+                )
+                (Json.Decode.field "start" Json.Decode.int)
+                (Json.Decode.field "items" (Json.Decode.array (Json.Decode.array blockDecoder)))
+
+        "ordered-tight-list" ->
+            Json.Decode.map2
+                (\start items ->
+                    OrderedTightList
+                        { start = start
+                        }
+                        items
+                )
+                (Json.Decode.field "start" Json.Decode.int)
+                (Json.Decode.field "items" (Json.Decode.array (Json.Decode.array inlineDecoder)))
+
+        "paragraph" ->
+            inlineDecoder
+                |> Json.Decode.array
+                |> Json.Decode.field "inlines"
+                |> Json.Decode.map Paragraph
+
+        "thematic-break" ->
+            Json.Decode.succeed ThematicBreak
+
+        "unordered-loose-list" ->
+            blockDecoder
+                |> Json.Decode.array
+                |> Json.Decode.array
+                |> Json.Decode.field "items"
+                |> Json.Decode.map UnorderedLooseList
+
+        "unordered-tight-list" ->
+            inlineDecoder
+                |> Json.Decode.array
+                |> Json.Decode.array
+                |> Json.Decode.field "items"
+                |> Json.Decode.map UnorderedTightList
+
+        _ ->
+            Json.Decode.fail "Unrecognised block type"
+
+
+{-|-}
+inlineDecoder : Decoder Inline
+inlineDecoder =
+    Json.Decode.string
+        |> Json.Decode.field "typeInline"
+        |> Json.Decode.andThen (inlineDecoderWithType >> Json.Decode.field "data")
+        |> withJsonType "inline"
+
+
+inlineDecoderWithType : String -> Decoder Inline
+inlineDecoderWithType typ =
+    case typ of
+        "emphasis" ->
+            Json.Decode.map3
+                (\char times inlines ->
+                    Emphasis
+                        { char = char
+                        , times = times
+                        }
+                        inlines
+                )
+                (Json.Decode.andThen
+                    (\string ->
+                        case String.uncons string of
+                            Just { first } ->
+                                Json.Decode.succeed first
+
+                            Nothing ->
+                                Json.Decode.fail "Couldn\'t get first char from string"
+                    )
+                    (Json.Decode.field "char" Json.Decode.string)
+                )
+                (Json.Decode.field "times" Json.Decode.int)
+                (Json.Decode.field "inlines" (Json.Decode.array inlineDecoder))
+
+        "hard-line-break" ->
+            Json.Decode.succeed HardLineBreak
+
+        "inline-code" ->
+            Json.Decode.map InlineCode Json.Decode.string
+
+        "inline-html" ->
+            Json.Decode.map InlineHtml htmlDecoder
+
+        "inline-html-node" ->
+            Json.Decode.map3
+                (\tagName attributes inlines ->
+                    InlineHtmlNode
+                        { tagName = tagName
+                        , attributes = attributes
+                        }
+                        inlines
+                )
+                (Json.Decode.field "tagName" Json.Decode.string)
+                (Json.Decode.field "attributes" (Json.Decode.dict Json.Decode.string))
+                (Json.Decode.field "inlines" (Json.Decode.array inlineDecoder))
+
+        "image" ->
+            Json.Decode.map2
+                (\alt url ->
+                    Image
+                        { alt = alt
+                        , url = url
+                        }
+                )
+                (Json.Decode.field "alt" Json.Decode.string)
+                (Json.Decode.field "url" Json.Decode.string)
+
+        "link" ->
+            Json.Decode.map2
+                (\text url ->
+                    Link
+                        { text = text
+                        , url = url
+                        }
+                )
+                (Json.Decode.field "text" Json.Decode.string)
+                (Json.Decode.field "url" Json.Decode.string)
+
+        "text" ->
+            Json.Decode.map Text Json.Decode.string
+
+        _ ->
+            Json.Decode.fail "Unrecognised inline type"
+
+
+{-|-}
+htmlDecoder : Decoder Markdown.Inline.Html
+htmlDecoder =
+    let
+        dataDecoder =
+            Json.Decode.field "data" Json.Decode.string
+    in
+    withJsonType
+        "html"
+        (Json.Decode.andThen
+            (\typ ->
+                case typ of
+                    "cdata" ->
+                        Json.Decode.map Cdata dataDecoder
+
+                    "comment" ->
+                        Json.Decode.map Comment dataDecoder
+
+                    "declaration" ->
+                        Json.Decode.map Declaration dataDecoder
+
+                    "processing-instruction" ->
+                        Json.Decode.map ProcessingInstruction dataDecoder
+
+                    _ ->
+                        Json.Decode.fail "Unrecognised html type"
+            )
+            (Json.Decode.field "typeHtml" Json.Decode.string)
+        )
+
+
+withJsonType : String -> Decoder a -> Decoder a
+withJsonType requiredType decoder =
+    Json.Decode.string
+        |> Json.Decode.field "type"
+        |> Json.Decode.andThen
+                (\typ ->
+                    if requiredType == typ then
+                        decoder
+                    else
+                        Json.Decode.fail ("Incorrect type, got `" ++ typ ++ "` instead of `" ++ requiredType ++ "`")
+                )
+
+
+
+-- JSON / TO
+
+
+{-|-}
+toJson : Block -> Json.Value
+toJson block =
+    Json.object
+        [ { key = "type"
+          , value = Json.string "block"
+          }
+        , { key = "typeBlock"
+          , value = Json.string (blockType block)
+          }
+        , { key = "data"
+          , value =
+                case block of
+                    BlockQuote blocks ->
+                        Json.object
+                            [ { key = "blocks"
+                              , value = Json.array toJson blocks
+                              }
+                            ]
+
+                    CodeBlock { body, language } ->
+                        Json.object
+                            [ { key = "body"
+                              , value = Json.string body
+                              }
+                            , { key = "language"
+                              , value = Maybe.withDefault Json.null (Maybe.map Json.string language)
+                              }
+                            ]
+
+                    Heading { level } inlines ->
+                        Json.object
+                            [ { key = "level"
+                              , value = Json.int level
+                              }
+                            , { key = "inlines"
+                              , value = Json.array inlineToJson inlines
+                              }
+                            ]
+
+                    HtmlBlock html ->
+                        htmlToJson html
+
+                    HtmlBlockNode { tagName, attributes } blocks ->
+                        Json.object
+                            [ { key = "tagName"
+                              , value = Json.string tagName
+                              }
+                            , { key = "attributes"
+                              , value = Json.dict identity Json.string attributes
+                              }
+                            , { key = "blocks"
+                              , value = Json.array toJson blocks
+                              }
+                            ]
+
+                    Inline inline ->
+                        Json.object
+                            [ { key = "inline"
+                              , value = inlineToJson inline
+                              }
+                            ]
+
+                    OrderedLooseList { start } itemsWithBlocks ->
+                        Json.object
+                            [ { key = "start"
+                              , value = Json.int start
+                              }
+                            , { key = "items"
+                              , value = Json.array (Json.array toJson) itemsWithBlocks
+                              }
+                            ]
+
+                    OrderedTightList { start } itemsWithInlines ->
+                        Json.object
+                            [ { key = "start"
+                              , value = Json.int start
+                              }
+                            , { key = "items"
+                              , value = Json.array (Json.array inlineToJson) itemsWithInlines
+                              }
+                            ]
+
+                    Paragraph inlines ->
+                        Json.object
+                            [ { key = "inlines"
+                              , value = Json.array inlineToJson inlines
+                              }
+                            ]
+
+                    ThematicBreak ->
+                        Json.null
+
+                    UnorderedLooseList itemsWithBlocks ->
+                        Json.object
+                            [ { key = "items"
+                              , value = Json.array (Json.array toJson) itemsWithBlocks
+                              }
+                            ]
+
+                    UnorderedTightList itemsWithInlines ->
+                        Json.object
+                            [ { key = "items"
+                              , value = Json.array (Json.array inlineToJson) itemsWithInlines
+                              }
+                            ]
+          }
+        ]
+
+
+{-|-}
+inlineToJson : Inline -> Json.Value
+inlineToJson inline =
+    Json.object
+        [ { key = "type"
+          , value = Json.string "inline"
+          }
+        , { key = "typeInline"
+          , value = Json.string (inlineType inline)
+          }
+        , { key = "data"
+          , value =
+                case inline of
+                    Emphasis { char, times } inlines ->
+                        Json.object
+                            [ { key = "char"
+                              , value = Json.string (String.fromChar char)
+                              }
+                            , { key = "times"
+                              , value = Json.int times
+                              }
+                            , { key = "inlines"
+                              , value = Json.array inlineToJson inlines
+                              }
+                            ]
+
+                    HardLineBreak ->
+                        Json.null
+
+                    InlineCode code ->
+                        Json.string code
+
+                    InlineHtml html ->
+                        htmlToJson html
+
+                    InlineHtmlNode { tagName, attributes } inlines ->
+                        Json.object
+                            [ { key = "tagName"
+                              , value = Json.string tagName
+                              }
+                            , { key = "attributes"
+                              , value = Json.dict identity Json.string attributes
+                              }
+                            , { key = "inlines"
+                              , value = Json.array inlineToJson inlines
+                              }
+                            ]
+
+                    Image { alt, url } ->
+                        Json.object
+                            [ { key = "alt"
+                              , value = Json.string alt
+                              }
+                            , { key = "url"
+                              , value = Json.string url
+                              }
+                            ]
+
+                    Link { text, url } ->
+                        Json.object
+                            [ { key = "text"
+                              , value = Json.string text
+                              }
+                            , { key = "url"
+                              , value = Json.string url
+                              }
+                            ]
+
+                    Text text ->
+                        Json.string text
+          }
+        ]
+
+
+{-|-}
+htmlToJson : Markdown.Inline.Html -> Json.Value
+htmlToJson html =
+    Json.object
+        [ { key = "type"
+          , value = Json.string "html"
+          }
+        , { key = "typeHtml"
+          , value = Json.string (htmlType html)
+          }
+        , { key = "data"
+          , value =
+                case html of
+                    Cdata string ->
+                        Json.string string
+
+                    Comment string ->
+                        Json.string string
+
+                    Declaration string ->
+                        Json.string string
+
+                    ProcessingInstruction string ->
+                        Json.string string
+          }
+        ]
+
+
+
 -- 🛠️
 
 
@@ -219,8 +695,95 @@ loadingStrategyToString strat =
             "lazy"
 
 
+{-|-}
+blockType : Block -> String
+blockType block =
+    case block of
+        BlockQuote _ ->
+            "block-quote"
 
--- ㊙️
+        CodeBlock _ ->
+            "code-block"
+
+        Heading _ _ ->
+            "heading"
+
+        HtmlBlock _ ->
+            "html-block"
+
+        HtmlBlockNode _ _ ->
+            "html-block-node"
+
+        Inline _ ->
+            "inline"
+
+        OrderedLooseList _ _ ->
+            "ordered-loose-list"
+
+        OrderedTightList _ _ ->
+            "ordered-tight-list"
+
+        Paragraph _ ->
+            "paragraph"
+
+        ThematicBreak ->
+            "thematic-break"
+
+        UnorderedLooseList _ ->
+            "unordered-loose-list"
+
+        UnorderedTightList _ ->
+            "unordered-tight-list"
+
+
+{-|-}
+htmlType : Markdown.Inline.Html -> String
+htmlType html =
+    case html of
+        Cdata _ ->
+            "cdata"
+
+        Comment _ ->
+            "comment"
+
+        Declaration _ ->
+            "declaration"
+
+        ProcessingInstruction _ ->
+            "processing-instruction"
+
+
+{-|-}
+inlineType : Inline -> String
+inlineType inline =
+    case inline of
+        Emphasis _ _ ->
+            "emphasis"
+
+        HardLineBreak ->
+            "hard-line-break"
+
+        InlineCode _ ->
+            "inline-code"
+
+        InlineHtml _ ->
+            "inline-html"
+
+        InlineHtmlNode _ _ ->
+            "inline-html-node"
+
+        Image _ ->
+            "image"
+
+        Link _ ->
+            "link"
+
+        Text _ ->
+            "text"
+
+
+
+-- ㊙️ / HTML
 
 
 htmlNode { tagName, attributes } =

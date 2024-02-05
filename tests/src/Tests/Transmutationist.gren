@@ -1,0 +1,191 @@
+module Tests.Transmutationist exposing ( tests )
+
+{-|-}
+
+import Dict
+import Expect
+import Json.Decode
+import Markdown
+import Markdown.Block exposing ( Block(..) )
+import Markdown.Inline exposing ( Inline(..), Html(..) )
+import Markdown.Transmutationist as Transmutationist
+import Test exposing (..)
+
+
+tests =
+    Test.concat
+        [ blockTests
+        , inlineTests
+        , htmlTests
+        ]
+
+
+
+-- BLOCK
+
+
+testBlock block =
+    test
+        (Transmutationist.blockType block)
+        (\_ ->
+            block
+                |> Transmutationist.toJson
+                |> Json.Decode.decodeValue Transmutationist.blockDecoder
+                |> Expect.equal (Ok block)
+        )
+
+
+blockTests =
+    describe
+        "Block transmutationist tests"
+        [ testBlock
+            (BlockQuote
+                [ ThematicBreak
+                ]
+            )
+        , testBlock
+            (CodeBlock
+                { body = "body"
+                , language = Just "language"
+                }
+            )
+        , testBlock
+            (Heading
+                { level = 1
+                }
+                [ HardLineBreak
+                ]
+            )
+        , testBlock (HtmlBlock (Declaration "Declaration"))
+        , testBlock
+            (HtmlBlockNode
+                { tagName = "tagName"
+                , attributes =
+                    Dict.fromArray
+                        [ { key = "key"
+                          , value = "value"
+                          }
+                        ]
+                }
+                [ ThematicBreak
+                ]
+            )
+        , testBlock (Inline HardLineBreak)
+        , testBlock
+            (OrderedLooseList
+                { start = 1
+                }
+                [ [ ThematicBreak
+                  ]
+                ]
+            )
+        , testBlock
+            (OrderedTightList
+                { start = 1
+                }
+                [ [ HardLineBreak
+                  ]
+                ]
+            )
+        , testBlock
+            (Paragraph
+                [ HardLineBreak
+                ]
+            )
+        , testBlock ThematicBreak
+        , testBlock
+            (UnorderedLooseList
+                [ [ ThematicBreak
+                  ]
+                ]
+            )
+        , testBlock
+            (UnorderedTightList
+                [ [ HardLineBreak
+                  ]
+                ]
+            )
+        ]
+
+
+
+-- INLINE
+
+
+testInline inline =
+    test
+        (Transmutationist.inlineType inline)
+        (\_ ->
+            inline
+                |> Transmutationist.inlineToJson
+                |> Json.Decode.decodeValue Transmutationist.inlineDecoder
+                |> Expect.equal (Ok inline)
+        )
+
+
+inlineTests =
+    describe
+        "Inline transmutationist tests"
+        [ testInline
+            (Emphasis
+                { char = '*'
+                , times = 1
+                }
+                [ Text "emphasised"
+                ]
+            )
+        , testInline HardLineBreak
+        , testInline (InlineCode "code")
+        , testInline (InlineHtml (Cdata "Cdata"))
+        , testInline
+            (InlineHtmlNode
+                { tagName = "tagName"
+                , attributes =
+                    Dict.fromArray
+                        [ { key = "key"
+                          , value = "value"
+                          }
+                        ]
+                }
+                [ Text "nested"
+                ]
+            )
+        , testInline
+            (Image
+                { alt = "alt"
+                , url = "url"
+                }
+            )
+        , testInline
+            (Link
+                { text = "text"
+                , url = "url"
+                }
+            )
+        , testInline (Text "test")
+        ]
+
+
+
+-- HTML
+
+
+testHtml html =
+    test
+        (Transmutationist.htmlType html)
+        (\_ ->
+            html
+                |> Transmutationist.htmlToJson
+                |> Json.Decode.decodeValue Transmutationist.htmlDecoder
+                |> Expect.equal (Ok html)
+        )
+
+
+htmlTests =
+    describe
+        "HTML transmutationist tests"
+        [ testHtml (Cdata "Cdata")
+        , testHtml (Comment "Comment")
+        , testHtml (Declaration "Declaration")
+        , testHtml (ProcessingInstruction "ProcessingInstruction")
+        ]

@@ -1,8 +1,8 @@
-module Markdown exposing ( parse, jsonFrontmatter, toHtml )
+module Markdown exposing ( parse, jsonFrontmatter, toHtml, toJson, jsonDecoder )
 
 {-| Markdown.
 
-@docs parse, jsonFrontmatter, toHtml
+@docs parse, jsonFrontmatter, toHtml, toJson, jsonDecoder
 
 -}
 
@@ -46,3 +46,17 @@ function in the `Markdown.Transmutationist` module.
 toHtml : Block -> Html msg
 toHtml =
     Markdown.Transmutationist.toHtml
+
+
+{-| Transform a Markdown block into JSON.
+-}
+toJson : Block -> Json.Value
+toJson =
+    Markdown.Transmutationist.toJson
+
+
+{-| Decoder that decodes a JSON encoded `Block`.
+-}
+jsonDecoder : Json.Decoder Block
+jsonDecoder =
+    Markdown.Transmutationist.blockDecoder

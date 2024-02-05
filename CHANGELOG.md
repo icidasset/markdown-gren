@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.0
+
+Add ability to transform to and from JSON.
+
 ## 3.0.0
 
 Fixed some issues with `toHtmlWithOptions` and reversed the parameter order.
