@@ -789,9 +789,12 @@ inlineType inline =
 htmlNode { tagName, attributes } =
     Html.node
         tagName
-        (attributes
-            |> Dict.toArray
-            |> Array.map (\{ key, value } -> A.attribute key value)
+        (Dict.foldr
+          (\key value ->
+            Array.pushLast (A.attribute key value)
+          )
+          []
+          attributes
         )
 
 

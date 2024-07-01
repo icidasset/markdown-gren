@@ -21,7 +21,7 @@ examples_148_to_191 =
             <table><tr><td>
             <pre>
             **Hello**,
-            
+
             _world_.
             </pre>
             </td></tr></table>
@@ -59,7 +59,7 @@ examples_148_to_191 =
                 </td>
               </tr>
             </table>
-            
+
             okay.
             """
             [ HtmlBlockNode
@@ -85,27 +85,22 @@ examples_148_to_191 =
 
         , -- Example 150
           -- SKIP: No partial tags allowed
-          -- 
+          --
           -- Example 151
           -- SKIP: No partial tags allowed
-          -- 
+          --
           -- Example 152
           testBlocks
             """
             <DIV CLASS="foo">
-            
+
             *Markdown*
-            
+
             </DIV>
             """
             [ HtmlBlockNode
                 { tagName = "DIV"
-                , attributes =
-                    Dict.fromArray
-                        [ { key = "CLASS"
-                          , value = "foo"
-                          }
-                        ]
+                , attributes = Dict.set "CLASS" "foo" Dict.empty
                 }
                 [ Paragraph
                     [ Emphasis

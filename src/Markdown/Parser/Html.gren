@@ -87,7 +87,7 @@ attributesToDictionary =
         (\attr acc ->
             case attr of
                 Html.Attribute k v ->
-                    Dict.insert k v acc
+                    Dict.set k v acc
 
                 _ ->
                     acc
@@ -225,7 +225,7 @@ manageClosing { acc, remainder } closing =
     { acc = acc
     , remainder = remainder
 
-    , -- 
+    , --
       closing = Just closing
     , end = False
     }

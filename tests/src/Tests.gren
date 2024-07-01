@@ -17,6 +17,6 @@ main =
 
 all =
     Test.concat
-        [ -- Tests.Parser.tests
-          Tests.Transmutationist.tests
+        [ Tests.Parser.tests
+        , Tests.Transmutationist.tests
         ]

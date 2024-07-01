@@ -60,12 +60,7 @@ blockTests =
         , testBlock
             (HtmlBlockNode
                 { tagName = "tagName"
-                , attributes =
-                    Dict.fromArray
-                        [ { key = "key"
-                          , value = "value"
-                          }
-                        ]
+                , attributes = Dict.set "key" "value" Dict.empty
                 }
                 [ ThematicBreak
                 ]
@@ -140,12 +135,7 @@ inlineTests =
         , testInline
             (InlineHtmlNode
                 { tagName = "tagName"
-                , attributes =
-                    Dict.fromArray
-                        [ { key = "key"
-                          , value = "value"
-                          }
-                        ]
+                , attributes = Dict.set "key" "value" Dict.empty
                 }
                 [ Text "nested"
                 ]
