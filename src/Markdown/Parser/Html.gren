@@ -85,9 +85,9 @@ nonNodeParser =
 attributesToDictionary =
     Array.foldl
         (\attr acc ->
-            case attr of
-                Html.Attribute k v ->
-                    Dict.set k v acc
+            when attr is
+                Html.Attribute { key, value } ->
+                    Dict.set key value acc
 
                 _ ->
                     acc
@@ -98,7 +98,7 @@ attributesToDictionary =
 extractHtmlString fn =
     map
         (\html ->
-            case html of
+            when html is
                 Html.Cdata s ->
                     fn s
 
@@ -108,8 +108,8 @@ extractHtmlString fn =
                 Html.Declaration s ->
                     fn s
 
-                Html.Node { tagName } _ _ ->
-                    fn tagName
+                Html.Node node ->
+                    fn node.properties.tagName
 
                 Html.ProcessingInstruction s ->
                     fn s
@@ -192,7 +192,7 @@ manageOpening { appendToPost, manageNext, nodeCreator, textCreator } { acc, rema
                     , remainder = remainder
                     }
     in
-    case maybe of
+    when maybe is
         Just result ->
             -- TODO: parse nextResult/nested?
             result.acc

@@ -32,8 +32,8 @@ type RawBlock
         }
     | RawHeading
         { level : Int
+        , string : String
         }
-        String
     | RawHtml Html
     | RawHtmlOpening Html.Opening
     | RawHtmlClosing Html.Closing
@@ -43,18 +43,18 @@ type RawBlock
         { leadingSpaces : Int
         , start : Int
         , symbol : String
+        , rawListItems : Array (Array String)
         }
-        (Array (Array String))
     | RawParagraph
         { closed : Bool
+        , string : String
         }
-        String
     | RawThematicBreak
     | RawUnorderedList
         { leadingSpaces : Int
         , symbol : String
+        , rawListItems : Array (Array String)
         }
-        (Array (Array String))
 
 
 
@@ -105,9 +105,9 @@ translateRaw :
        , end : Bool
        }
 translateRaw { acc, remainder } =
-    case Array.popFirst remainder of
-        Just { first, rest } ->
-            translateRawElement acc first rest
+    when Array.popFirst remainder is
+        Just record ->
+            translateRawElement acc record.first record.rest
 
         Nothing ->
             { acc = acc
@@ -129,12 +129,12 @@ translateRawElement :
 translateRawElement acc rawBlock rest =
     let
         merge a mergeAcc =
-            case a of
+            when a is
                 Inline (Text "") ->
                     mergeAcc
 
                 Inline (Text t) ->
-                    case Array.popLast mergeAcc of
+                    when Array.popLast mergeAcc is
                         Just { last = Inline (Text lastText), initial } ->
                             Array.pushLast (Inline (Text (lastText ++ t))) initial
 
@@ -155,13 +155,13 @@ translateRawElement acc rawBlock rest =
                 , remainder = rest
                 }
     in
-    case rawBlock of
+    when rawBlock is
         RawBlock block ->
             add block
 
-        -- 
+        --
         -- BlockQuote
-        -- 
+        --
         RawBlockQuote string ->
             string
                 |> parse
@@ -169,9 +169,9 @@ translateRawElement acc rawBlock rest =
                 |> BlockQuote
                 |> add
 
-        -- 
+        --
         -- CodeBlock (fenced)
-        -- 
+        --
         RawFencedCode { body, language } ->
             { body = body
             , language = language
@@ -179,19 +179,19 @@ translateRawElement acc rawBlock rest =
                 |> CodeBlock
                 |> add
 
-        -- 
+        --
         -- Heading
-        -- 
-        RawHeading props string ->
+        --
+        RawHeading { level, string } ->
             string
                 |> Markdown.Parser.Inlines.parse
                 |> Result.withDefault []
-                |> Heading props
+                |> (\inlines -> Heading { level = level, inlines = inlines })
                 |> add
 
-        -- 
+        --
         -- HTML
-        -- 
+        --
         RawHtml html ->
             html
                 |> HtmlBlock
@@ -201,13 +201,19 @@ translateRawElement acc rawBlock rest =
             Html.manageOpening
                 { appendToPost = merge
                 , manageNext = translateRaw
-                , nodeCreator = HtmlBlockNode
+                , nodeCreator = \props blocks ->
+                    HtmlBlockNode
+                        { tagName = props.tagName
+                        , attributes = props.attributes
+                        , blocks = blocks
+                        }
                 , textCreator = Text >> Inline
                 }
                 { acc = acc
                 , remainder = rest
                 }
                 opening
+
 
         RawHtmlClosing closing ->
             Html.manageClosing
@@ -231,9 +237,9 @@ translateRawElement acc rawBlock rest =
             else
                 add (Inline (Text trimmed))
 
-        -- 
+        --
         -- CodeBlock (indented)
-        -- 
+        --
         RawIndentedCode body ->
             { body = body
             , language = Nothing
@@ -241,10 +247,10 @@ translateRawElement acc rawBlock rest =
                 |> CodeBlock
                 |> add
 
-        -- 
+        --
         -- OrderedLooseList & OrderedTightList
-        -- 
-        RawOrderedList { start } rawListItems ->
+        --
+        RawOrderedList { start, rawListItems } ->
             let
                 listItems =
                     Array.map (String.join "\n") rawListItems
@@ -252,22 +258,24 @@ translateRawElement acc rawBlock rest =
                 isLooseList =
                     Array.any (\a -> Array.length a > 1) rawListItems
 
-                props =
-                    { start = start
-                    }
-
                 block =
                     if isLooseList then
-                        OrderedLooseList props (Array.map (String.trim >> parse >> Result.withDefault []) listItems)
+                        OrderedLooseList
+                            { start = start
+                            , blocks = Array.map (String.trim >> parse >> Result.withDefault []) listItems
+                            }
                     else
-                        OrderedTightList props (Array.map (String.trim >> Markdown.Parser.Inlines.parse >> Result.withDefault []) listItems)
+                        OrderedTightList
+                            { start = start
+                            , inlines = Array.map (String.trim >> Markdown.Parser.Inlines.parse >> Result.withDefault []) listItems
+                            }
             in
             add block
 
-        -- 
+        --
         -- Paragraph
-        -- 
-        RawParagraph _ string ->
+        --
+        RawParagraph { string } ->
             string
                 |> String.trimRight
                 |> Markdown.Parser.Inlines.parse
@@ -275,16 +283,16 @@ translateRawElement acc rawBlock rest =
                 |> Paragraph
                 |> add
 
-        -- 
+        --
         -- ThematicBreak
-        -- 
+        --
         RawThematicBreak ->
             add ThematicBreak
 
-        -- 
+        --
         -- UnorderedLooseList & UnorderedTightList
-        -- 
-        RawUnorderedList _ rawListItems ->
+        --
+        RawUnorderedList { rawListItems } ->
             let
                 listItems =
                     Array.map (String.join "\n") rawListItems
@@ -317,8 +325,8 @@ rawBlockParser blocks =
             map (\b -> Loop (blocks ++ b))
 
         lastBlockWasFinishedParagraphOrSomethingElse =
-            case Array.popLast blocks of
-                Just { last = RawParagraph { closed } _ } ->
+            when Array.popLast blocks is
+                Just { last = RawParagraph { closed } } ->
                     closed
 
                 _ ->
@@ -344,7 +352,7 @@ rawBlockParser blocks =
                         (\line ->
                             let
                                 lineIndent =
-                                    String.length line - String.length (String.trimLeft line)
+                                    String.unitLength line - String.unitLength (String.trimLeft line)
 
                                 totalSpacesNeeded =
                                     leadingSpaces + 2 + lineIndent
@@ -361,7 +369,7 @@ rawBlockParser blocks =
                 |> Maybe.withDefault (problem "")
                 |> andThen
                         (\line ->
-                            case Array.popLast items of
+                            when Array.popLast items is
                                 Just { last, initial } ->
                                     last
                                         |> Array.pushLast line
@@ -377,26 +385,36 @@ rawBlockParser blocks =
         [ -- Check if we reached the end
           map (\_ -> Done blocks) end
 
-        , -- Part of list?
-          case Array.popLast blocks of
-            Just { last = RawOrderedList params items, initial } ->
-                items
-                    |> isPartOfListParser params.leadingSpaces
-                    |> map (RawOrderedList params)
+        ,
+        when Array.popLast blocks is
+            Just { last = RawOrderedList { leadingSpaces, start, symbol, rawListItems }, initial } ->
+                rawListItems
+                    |> isPartOfListParser leadingSpaces
+                    |> map (\newItems -> RawOrderedList
+                        { leadingSpaces = leadingSpaces
+                        , start = start
+                        , symbol = symbol
+                        , rawListItems = newItems
+                        })
                     |> map (\a -> Array.pushLast a initial)
                     |> map Loop
 
-            Just { last = RawUnorderedList params items, initial } ->
-                items
-                    |> isPartOfListParser params.leadingSpaces
-                    |> map (RawUnorderedList params)
+            Just { last = RawUnorderedList { leadingSpaces, symbol, rawListItems }, initial } ->
+                rawListItems
+                    |> isPartOfListParser leadingSpaces
+                    |> map (\newItems -> RawUnorderedList
+                        { leadingSpaces = leadingSpaces
+                        , symbol = symbol
+                        , rawListItems = newItems
+                        })
                     |> map (\a -> Array.pushLast a initial)
                     |> map Loop
+
 
             _ ->
                 problem ""
 
-        , -- 
+        , --
           block (backtrackable (cannotInterruptParagraph headingParser))
         , block (backtrackable blockQuoteParser)
         , block (backtrackable thematicBreakParser)
@@ -411,7 +429,7 @@ rawBlockParser blocks =
           block (backtrackable fencedCodeParser)
 
         , -- Indented code
-          case lastBlock of
+          when lastBlock is
             Just (RawHtmlOpening _) ->
                 problem ""
 
@@ -421,7 +439,7 @@ rawBlockParser blocks =
             _ ->
                 succeed
                     (\line ->
-                        case Array.popLast blocks of
+                        when Array.popLast blocks is
                             Just { last = RawIndentedCode ic, initial } ->
                                 initial
                                     |> Array.pushLast (RawIndentedCode (ic ++ "\n" ++ line))
@@ -439,29 +457,29 @@ rawBlockParser blocks =
             |> withOptionalLeadingSpaces
             |> andThen
                     (\html ->
-                        case html of
-                            Html.Node { tagName } attributes descendants ->
+                        when html is
+                            Html.Node { properties, attributes, descendants } ->
                                 succeed
                                     [ RawHtmlOpening
-                                        { tagName = tagName
+                                        { tagName = properties.tagName
                                         , attributes = Html.attributesToDictionary attributes
                                         , closed = False
                                         , source = ""
                                         }
 
-                                    , -- 
-                                      (case descendants of
+                                    , --
+                                    (when descendants is
                                         Html.Regular array ->
                                             array
-                                      )
+                                    )
                                         |> Html.arrayToString
                                         |> Text
                                         |> Inline
                                         |> RawBlock
 
-                                    , -- 
-                                      RawHtmlClosing
-                                        { tagName = tagName
+                                    , --
+                                    RawHtmlClosing
+                                        { tagName = properties.tagName
                                         , source = ""
                                         }
                                     ]
@@ -500,7 +518,7 @@ rawBlockParser blocks =
           -- Try parsing one line at a time.
           succeed
             (\line ->
-                case Array.popLast blocks of
+                when Array.popLast blocks is
                     Just { last = RawHtmlOpening _ } ->
                         -- if line == "" then
                         --     Loop blocks
@@ -514,31 +532,32 @@ rawBlockParser blocks =
                             |> Array.pushLast (RawHtmlText (text ++ "\n" ++ line))
                             |> Loop
 
-                    Just { last = RawParagraph { closed = False } par, initial } ->
+                    Just { last = RawParagraph { closed = False, string = par }, initial } ->
                         if String.endsWith "\n" par then
                             initial
-                                |> Array.pushLast (RawParagraph isClosed (String.dropRight 1 par))
-                                |> Array.pushLast (RawParagraph isOpen line)
+                                |> Array.pushLast (RawParagraph { closed = True, string = String.dropLast 1 par })
+                                |> Array.pushLast (RawParagraph { closed = False, string = line })
                                 |> Loop
                         else if par == "" then
                             initial
-                                |> Array.pushLast (RawParagraph isOpen line)
+                                |> Array.pushLast (RawParagraph { closed = False, string = line })
                                 |> Loop
                         else if line == "" then
                             initial
-                                |> Array.pushLast (RawParagraph isClosed par)
+                                |> Array.pushLast (RawParagraph { closed = True, string = par })
                                 |> Loop
                         else
                             initial
-                                |> Array.pushLast (RawParagraph isOpen (par ++ "\n" ++ line))
+                                |> Array.pushLast (RawParagraph { closed = False, string = par ++ "\n" ++ line })
                                 |> Loop
+
 
                     _ ->
                         if line == "" then
                             Loop blocks
                         else
                             blocks
-                                |> Array.pushLast (RawParagraph isOpen line)
+                                |> Array.pushLast (RawParagraph { closed = False, string = line })
                                 |> Loop
             )
             |. many (specificChar ' ')
@@ -572,7 +591,7 @@ blockQuoteParser =
                                     if String.startsWith "    " line then
                                         line
                                     else if String.startsWith ">" (String.trim line) then
-                                        String.trim (String.dropLeft 1 (String.trim line))
+                                        String.trim (String.dropFirst 1 (String.trim line))
                                     else
                                         String.trim line
                                 )
@@ -613,7 +632,7 @@ fencedCodeParser =
                                 (\l ->
                                     { opening = opening
                                     , language =
-                                        case Maybe.map String.trim (Array.first (String.split " " l)) of
+                                        when Maybe.map String.trim (Array.first (String.split " " l)) is
                                             Just "" ->
                                                 Nothing
 
@@ -634,7 +653,7 @@ fencedCodeParser =
                                             String.split "\n" string
 
                                         formattedLines =
-                                            case Array.popLast lines of
+                                            when Array.popLast lines is
                                                 Just { last, initial } ->
                                                     Array.dropFirst 1 initial
 
@@ -660,36 +679,37 @@ indentedCodeParser =
 
 headingParser : Parser RawBlock
 headingParser =
-    succeed identity
+    succeed (\level string ->
+        RawHeading
+            { level = level
+            , string = string
+            }
+    )
         |. notMoreThanXSpaces 3
-        |= some (specificChar '#')
-        |> map (\{ rest } -> 1 + Array.length rest)
-        |> andThen
-                (\level ->
-                    if level > 6 then
-                        problem "Headers only go up to 6"
-                    else
-                        succeed
-                            (RawHeading
-                                { level = level
-                                }
-                            )
-                            |. some (specificChar ' ')
-                            |= getChompedString (chompUntilEndOr "\n")
-                            |. oneOf
-                                    [ end
-                                    , spaces
-                                    ]
-                )
+        |= (some (specificChar '#')
+            |> map (\{ rest } -> 1 + Array.length rest)
+            |> andThen (\level ->
+                if level > 6 then
+                    problem "Headers only go up to 6"
+                else
+                    succeed level
+            ))
+        |. some (specificChar ' ')
+        |= getChompedString (chompUntilEndOr "\n")
+        |. oneOf
+            [ end
+            , spaces
+            ]
+
 
 
 orderedListManager :
     Array RawBlock
     -> { leadingSpaces : Int
-       , line : String
-       , start : Int
-       , symbol : String
-       }
+        , line : String
+        , start : Int
+        , symbol : String
+        }
     -> Step (Array RawBlock) (Array RawBlock)
 orderedListManager blocks list =
     let
@@ -699,31 +719,50 @@ orderedListManager blocks list =
             , symbol = list.symbol
             }
     in
-    case Array.popLast blocks of
-        Just { last = RawOrderedList lastListProps lastListItems, initial } ->
-            -- Previous list exists
+    when Array.popLast blocks is
+        Just { last = RawOrderedList { leadingSpaces, start, symbol, rawListItems }, initial } ->
             lastBlockWasList
-                RawOrderedList
+                (\properties items -> RawOrderedList
+                    { leadingSpaces = properties.leadingSpaces
+                    , start = properties.start
+                    , symbol = properties.symbol
+                    , rawListItems = items
+                    })
                 { currentList =
-                    { props = props
+                    { props =
+                        { leadingSpaces = props.leadingSpaces
+                        , start = props.start
+                        , symbol = props.symbol
+                        , rawListItems = []
+                        }
                     , line = list.line
                     }
                 , lastList =
-                    { props = lastListProps
-                    , items = lastListItems
+                    { items = rawListItems
+                    , props =
+                        { leadingSpaces = leadingSpaces
+                        , start = start
+                        , symbol = symbol
+                        , rawListItems = []
+                        }
                     }
                 , allBlocksExceptLast = initial
                 , allBlocks = blocks
                 }
 
         _ ->
-            -- New list
-            list.line
-                |> Array.singleton
-                |> Array.singleton
-                |> RawOrderedList props
-                |> (\b -> Array.pushLast b blocks)
-                |> Loop
+            Loop (Array.pushLast
+                (RawOrderedList
+                    { leadingSpaces = props.leadingSpaces
+                    , start = props.start
+                    , symbol = props.symbol
+                    , rawListItems = Array.singleton (Array.singleton list.line)
+                    }
+                )
+                blocks
+            )
+
+
 
 
 orderedListParser :
@@ -745,7 +784,7 @@ orderedListParser =
                             |= getChompedString (chompOneOrMore Char.isDigit)
                             |> andThen
                                     (\string ->
-                                        case String.toInt string of
+                                        when String.toInt string is
                                             Just int ->
                                                 succeed int
 
@@ -816,26 +855,31 @@ thematicBreakParser =
 unorderedListManager :
     Array RawBlock
     -> { leadingSpaces : Int
-       , line : String
-       , symbol : String
-       }
+        , line : String
+        , symbol : String
+        }
     -> Step (Array RawBlock) (Array RawBlock)
 unorderedListManager blocks list =
-    case Array.popLast blocks of
-        Just { last = RawUnorderedList lastListProps lastListItems, initial } ->
+    when Array.popLast blocks is
+        Just { last = RawUnorderedList { leadingSpaces, symbol, rawListItems }, initial } ->
             -- Previous list exists
             lastBlockWasList
-                RawUnorderedList
+                (\props items -> RawUnorderedList { leadingSpaces = props.leadingSpaces, symbol = props.symbol, rawListItems = items })
                 { currentList =
                     { props =
                         { leadingSpaces = list.leadingSpaces
                         , symbol = list.symbol
+                        , rawListItems = []
                         }
                     , line = list.line
                     }
                 , lastList =
-                    { props = lastListProps
-                    , items = lastListItems
+                    { items = rawListItems
+                    , props =
+                        { leadingSpaces = leadingSpaces
+                        , symbol = symbol
+                        , rawListItems = []
+                        }
                     }
                 , allBlocksExceptLast = initial
                 , allBlocks = blocks
@@ -843,15 +887,16 @@ unorderedListManager blocks list =
 
         _ ->
             -- New list
-            list.line
-                |> Array.singleton
-                |> Array.singleton
-                |> RawUnorderedList
-                        { leadingSpaces = list.leadingSpaces
-                        , symbol = list.symbol
-                        }
-                |> (\b -> Array.pushLast b blocks)
-                |> Loop
+            Loop (Array.pushLast
+                (RawUnorderedList
+                    { leadingSpaces = list.leadingSpaces
+                    , symbol = list.symbol
+                    , rawListItems = Array.singleton (Array.singleton list.line)
+                    }
+                )
+                blocks
+            )
+
 
 
 unorderedListParser :
@@ -943,9 +988,9 @@ lastBlockWasList constructor { currentList, lastList, allBlocksExceptLast, allBl
         wrapLine =
             Array.singleton >> Array.singleton
     in
-    if currentList.props.leadingSpaces >= lastList.props.leadingSpaces + String.length lastList.props.symbol then
+    if currentList.props.leadingSpaces >= lastList.props.leadingSpaces + String.unitLength lastList.props.symbol then
         -- Content belongs to previous list item
-        case Array.popLast lastList.items of
+        when Array.popLast lastList.items is
             Just { last = lastItem, initial = otherItems } ->
                 lastItem
                     |> Array.pushLast formattedLine

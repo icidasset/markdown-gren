@@ -66,7 +66,7 @@ toHtmlWithOptions options block =
                 { imageLoadingStrategy = options.imageLoadingStrategy
                 }
     in
-    case block of
+    when block is
         BlockQuote blocks ->
             Html.blockquote [] (Array.map toHtml blocks)
 
@@ -74,7 +74,7 @@ toHtmlWithOptions options block =
             Html.pre
                 []
                 [ Html.code
-                    (case language of
+                    (when language is
                         Just l ->
                             [ A.class ("language-" ++ l)
                             ]
@@ -86,8 +86,8 @@ toHtmlWithOptions options block =
                     ]
                 ]
 
-        Heading { level } inlines ->
-            (case level of
+        Heading { level, inlines } ->
+            (when level is
                 1 ->
                     Html.h1
 
@@ -115,23 +115,30 @@ toHtmlWithOptions options block =
         HtmlBlock html ->
             inlineMarkdownHtmlToHtml html
 
-        HtmlBlockNode props blocks ->
-            htmlNode props (Array.map toHtml blocks)
+        HtmlBlockNode record ->
+            htmlNode
+                { tagName = record.tagName
+                , attributes = record.attributes
+                }
+                (Array.map toHtml record.blocks)
+
 
         Inline inline ->
             transmuteInlines inline
 
-        OrderedLooseList { start } listItems ->
+        -- TODO rename block2
+        OrderedLooseList { start, blocks } ->
             Html.ol
                 [ A.attribute "start" (String.fromInt start)
                 ]
-                (Array.map (\blocks -> Html.li [] (Array.map toHtml blocks)) listItems)
+                (Array.map (\blocks2 -> Html.li [] (Array.map toHtml blocks2)) blocks)
 
-        OrderedTightList { start } listItems ->
+        -- TODO rename inlines2
+        OrderedTightList { start, inlines } ->
             Html.ol
                 [ A.attribute "start" (String.fromInt start)
                 ]
-                (Array.map (\inlines -> Html.li [] (Array.map transmuteInlines inlines)) listItems)
+                (Array.map (\inlines2 -> Html.li [] (Array.map transmuteInlines inlines2)) inlines)
 
         Paragraph inlines ->
             Html.p [] (Array.map transmuteInlines inlines)
@@ -174,9 +181,9 @@ inlineToHtmlWithOptions options inline =
         { imageLoadingStrategy } =
             options
     in
-    case inline of
-        Emphasis { times } inlines ->
-            (case times of
+    when inline is
+        Emphasis { times, inlines } ->
+            (when times is
                 1 ->
                     Html.em
 
@@ -198,8 +205,13 @@ inlineToHtmlWithOptions options inline =
         InlineHtml html ->
             inlineMarkdownHtmlToHtml html
 
-        InlineHtmlNode props inlines ->
-            htmlNode props (Array.map transmuteInlines inlines)
+        InlineHtmlNode record ->
+            htmlNode
+                { tagName = record.tagName
+                , attributes = record.attributes
+                }
+                (Array.map transmuteInlines record.inlines)
+
 
         Image { alt, url } ->
             Html.img
@@ -235,7 +247,7 @@ blockDecoder =
 
 blockDecoderWithType : String -> Decoder Block
 blockDecoderWithType typ =
-    case typ of
+    when typ is
         "block-quote" ->
             blockDecoder
                 |> Json.Decode.array
@@ -258,8 +270,8 @@ blockDecoderWithType typ =
                 (\level inlines ->
                     Heading
                         { level = level
+                        , inlines = inlines
                         }
-                        inlines
                 )
                 (Json.Decode.field "level" Json.Decode.int)
                 (Json.Decode.field "inlines" (Json.Decode.array inlineDecoder))
@@ -273,8 +285,8 @@ blockDecoderWithType typ =
                     HtmlBlockNode
                         { tagName = tagName
                         , attributes = attributes
+                        , blocks = blocks
                         }
-                        blocks
                 )
                 (Json.Decode.field "tagName" Json.Decode.string)
                 (Json.Decode.field "attributes" (Json.Decode.dict Json.Decode.string))
@@ -290,8 +302,8 @@ blockDecoderWithType typ =
                 (\start items ->
                     OrderedLooseList
                         { start = start
+                        , blocks = items
                         }
-                        items
                 )
                 (Json.Decode.field "start" Json.Decode.int)
                 (Json.Decode.field "items" (Json.Decode.array (Json.Decode.array blockDecoder)))
@@ -301,8 +313,8 @@ blockDecoderWithType typ =
                 (\start items ->
                     OrderedTightList
                         { start = start
+                        , inlines = items
                         }
-                        items
                 )
                 (Json.Decode.field "start" Json.Decode.int)
                 (Json.Decode.field "items" (Json.Decode.array (Json.Decode.array inlineDecoder)))
@@ -345,19 +357,19 @@ inlineDecoder =
 
 inlineDecoderWithType : String -> Decoder Inline
 inlineDecoderWithType typ =
-    case typ of
+    when typ is
         "emphasis" ->
             Json.Decode.map3
                 (\char times inlines ->
                     Emphasis
                         { char = char
                         , times = times
+                        , inlines = inlines
                         }
-                        inlines
                 )
                 (Json.Decode.andThen
                     (\string ->
-                        case String.uncons string of
+                        when String.popFirst string is
                             Just { first } ->
                                 Json.Decode.succeed first
 
@@ -384,8 +396,8 @@ inlineDecoderWithType typ =
                     InlineHtmlNode
                         { tagName = tagName
                         , attributes = attributes
+                        , inlines = inlines
                         }
-                        inlines
                 )
                 (Json.Decode.field "tagName" Json.Decode.string)
                 (Json.Decode.field "attributes" (Json.Decode.dict Json.Decode.string))
@@ -431,7 +443,7 @@ htmlDecoder =
         "html"
         (Json.Decode.andThen
             (\typ ->
-                case typ of
+                when typ is
                     "cdata" ->
                         Json.Decode.map Cdata dataDecoder
 
@@ -460,7 +472,7 @@ withJsonType requiredType decoder =
                     if requiredType == typ then
                         decoder
                     else
-                        Json.Decode.fail ("Incorrect type, got `" ++ typ ++ "` instead of `" ++ requiredType ++ "`")
+                        Json.Decode.fail ("Incorrect type, got `" ++ typ ++ "` instead is `" ++ requiredType ++ "`")
                 )
 
 
@@ -480,7 +492,7 @@ toJson block =
           }
         , { key = "data"
           , value =
-                case block of
+                when block is
                     BlockQuote blocks ->
                         Json.object
                             [ { key = "blocks"
@@ -498,7 +510,7 @@ toJson block =
                               }
                             ]
 
-                    Heading { level } inlines ->
+                    Heading { level, inlines } ->
                         Json.object
                             [ { key = "level"
                               , value = Json.int level
@@ -511,7 +523,7 @@ toJson block =
                     HtmlBlock html ->
                         htmlToJson html
 
-                    HtmlBlockNode { tagName, attributes } blocks ->
+                    HtmlBlockNode { tagName, attributes, blocks } ->
                         Json.object
                             [ { key = "tagName"
                               , value = Json.string tagName
@@ -531,23 +543,23 @@ toJson block =
                               }
                             ]
 
-                    OrderedLooseList { start } itemsWithBlocks ->
+                    OrderedLooseList { start, blocks } ->
                         Json.object
                             [ { key = "start"
                               , value = Json.int start
                               }
                             , { key = "items"
-                              , value = Json.array (Json.array toJson) itemsWithBlocks
+                              , value = Json.array (Json.array toJson) blocks
                               }
                             ]
 
-                    OrderedTightList { start } itemsWithInlines ->
+                    OrderedTightList { start, inlines } ->
                         Json.object
                             [ { key = "start"
                               , value = Json.int start
                               }
                             , { key = "items"
-                              , value = Json.array (Json.array inlineToJson) itemsWithInlines
+                              , value = Json.array (Json.array inlineToJson) inlines
                               }
                             ]
 
@@ -590,8 +602,8 @@ inlineToJson inline =
           }
         , { key = "data"
           , value =
-                case inline of
-                    Emphasis { char, times } inlines ->
+                when inline is
+                    Emphasis { char, times, inlines } ->
                         Json.object
                             [ { key = "char"
                               , value = Json.string (String.fromChar char)
@@ -613,7 +625,7 @@ inlineToJson inline =
                     InlineHtml html ->
                         htmlToJson html
 
-                    InlineHtmlNode { tagName, attributes } inlines ->
+                    InlineHtmlNode { tagName, attributes, inlines } ->
                         Json.object
                             [ { key = "tagName"
                               , value = Json.string tagName
@@ -664,7 +676,7 @@ htmlToJson html =
           }
         , { key = "data"
           , value =
-                case html of
+                when html is
                     Cdata string ->
                         Json.string string
 
@@ -687,7 +699,7 @@ htmlToJson html =
 {-|-}
 loadingStrategyToString : LoadingStrategy -> String
 loadingStrategyToString strat =
-    case strat of
+    when strat is
         Eager ->
             "eager"
 
@@ -698,29 +710,29 @@ loadingStrategyToString strat =
 {-|-}
 blockType : Block -> String
 blockType block =
-    case block of
+    when block is
         BlockQuote _ ->
             "block-quote"
 
         CodeBlock _ ->
             "code-block"
 
-        Heading _ _ ->
+        Heading _ ->
             "heading"
 
         HtmlBlock _ ->
             "html-block"
 
-        HtmlBlockNode _ _ ->
+        HtmlBlockNode _ ->
             "html-block-node"
 
         Inline _ ->
             "inline"
 
-        OrderedLooseList _ _ ->
+        OrderedLooseList _ ->
             "ordered-loose-list"
 
-        OrderedTightList _ _ ->
+        OrderedTightList _ ->
             "ordered-tight-list"
 
         Paragraph _ ->
@@ -739,7 +751,7 @@ blockType block =
 {-|-}
 htmlType : Markdown.Inline.Html -> String
 htmlType html =
-    case html of
+    when html is
         Cdata _ ->
             "cdata"
 
@@ -756,8 +768,8 @@ htmlType html =
 {-|-}
 inlineType : Inline -> String
 inlineType inline =
-    case inline of
-        Emphasis _ _ ->
+    when inline is
+        Emphasis _ ->
             "emphasis"
 
         HardLineBreak ->
@@ -769,7 +781,7 @@ inlineType inline =
         InlineHtml _ ->
             "inline-html"
 
-        InlineHtmlNode _ _ ->
+        InlineHtmlNode _ ->
             "inline-html-node"
 
         Image _ ->
@@ -800,7 +812,7 @@ htmlNode { tagName, attributes } =
 
 inlineMarkdownHtmlToHtml : Markdown.Inline.Html -> Html.Html msg
 inlineMarkdownHtmlToHtml html =
-    case html of
+    when html is
         Cdata s ->
             Html.cdata s
 

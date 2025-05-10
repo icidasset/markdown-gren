@@ -70,9 +70,9 @@ translateRaw :
        , end : Bool
        }
 translateRaw { acc, remainder } =
-    case Array.popFirst remainder of
-        Just { first, rest } ->
-            translateRawElement acc first rest
+    when Array.popFirst remainder is
+        Just record ->
+            translateRawElement acc record.first record.rest
 
         Nothing ->
             { acc = acc
@@ -101,14 +101,21 @@ translateRawElement acc rawElement rest =
                 { acc = merge a acc
                 , remainder = rest
                 }
+
+        nodeCreatorAdapter props inlines =
+            InlineHtmlNode
+                { attributes = props.attributes
+                , tagName = props.tagName
+                , inlines = inlines
+                }
     in
-    case rawElement of
+    when rawElement is
         RawInline inline ->
             add inline
 
-        -- 
+        --
         -- HTML
-        -- 
+        --
         RawHtml html ->
             html
                 |> InlineHtml
@@ -118,7 +125,7 @@ translateRawElement acc rawElement rest =
             Html.manageOpening
                 { appendToPost = merge
                 , manageNext = translateRaw
-                , nodeCreator = InlineHtmlNode
+                , nodeCreator = nodeCreatorAdapter
                 , textCreator = Text
                 }
                 { acc = acc
@@ -158,10 +165,10 @@ rawParserLoop customInlineParsers inlineElements =
         [ -- Check if we reached the end
           map (\_ -> Done inlineElements) end
 
-        , -- 
+        , --
           backtrackable (inlineCodeParser inlineElements lastElement)
 
-        , -- 
+        , --
           inline (map RawInline (backtrackable (emphasisWithUnderscoreParser lastElement)))
         , inline (map RawInline (backtrackable (emphasisWithStarParser lastElement)))
         , inline (map RawInline (backtrackable hardLineBreakParser))
@@ -170,25 +177,25 @@ rawParserLoop customInlineParsers inlineElements =
         , inline (map RawInline (backtrackable autolinksParser))
             -- , --
             --   inline (backtrackable (oneOf customInlineParsers))
-            -- 
+            --
 
         , -- HTML
           Html.nonRecursiveNodeParser
             |> withOptionalLeadingSpaces
             |> andThen
                     (\html ->
-                        case html of
-                            Html.Node { tagName } attributes descendants ->
+                        when html is
+                            Html.Node node ->
                                 succeed
                                     [ RawHtmlOpening
-                                        { tagName = tagName
-                                        , attributes = Html.attributesToDictionary attributes
+                                        { tagName = node.properties.tagName
+                                        , attributes = Html.attributesToDictionary node.attributes
                                         , closed = False
                                         , source = ""
                                         }
 
-                                    , -- 
-                                      (case descendants of
+                                    , --
+                                      (when node.descendants is
                                         Html.Regular array ->
                                             array
                                       )
@@ -196,9 +203,9 @@ rawParserLoop customInlineParsers inlineElements =
                                         |> Text
                                         |> RawInline
 
-                                    , -- 
+                                    , --
                                       RawHtmlClosing
-                                        { tagName = tagName
+                                        { tagName = node.properties.tagName
                                         , source = ""
                                         }
                                     ]
@@ -209,12 +216,13 @@ rawParserLoop customInlineParsers inlineElements =
             |> backtrackable
             |> inlines
 
-        , -- 
+
+        , --
           Html.nonNodeParser
             |> map RawHtml
             |> inline
 
-        , -- 
+        , --
           [ map RawHtmlOpening (backtrackable Html.openingParser)
           , map RawHtmlClosing (backtrackable Html.closingParser)
           ]
@@ -223,7 +231,7 @@ rawParserLoop customInlineParsers inlineElements =
             |> backtrackable
             |> inline
 
-        , -- 
+        , --
           textLoopParser inlineElements lastElement
         ]
 
@@ -285,7 +293,7 @@ emphasisParser emphasisChar addToLeftFlank lastElement =
             String.fromArray (Array.pushFirst s.match s.rest)
 
         originalPrecedingChar =
-            case lastElement of
+            when lastElement is
                 Just (RawInline (Text t)) ->
                     Array.last (String.toArray t)
 
@@ -356,7 +364,7 @@ emphasisParser emphasisChar addToLeftFlank lastElement =
                                 let
                                     handleClosing maybeAmountOfChars text =
                                         succeed identity
-                                            |= (case maybeAmountOfChars of
+                                            |= (when maybeAmountOfChars is
                                                     Just a ->
                                                         specificAmountOf a (specificChar emphasisChar)
 
@@ -371,7 +379,7 @@ emphasisParser emphasisChar addToLeftFlank lastElement =
 
                                                             extractRightFlank str fl =
                                                                 if String.endsWith emphasisCharString str then
-                                                                    extractRightFlank (String.dropRight 1 str) (fl ++ emphasisCharString)
+                                                                    extractRightFlank (String.dropLast 1 str) (fl ++ emphasisCharString)
                                                                 else
                                                                     { emph = str
                                                                     , fl = fl
@@ -382,7 +390,7 @@ emphasisParser emphasisChar addToLeftFlank lastElement =
 
                                                             extractLeftFlank str fl =
                                                                 if String.startsWith emphasisCharString str then
-                                                                    extractLeftFlank (String.dropLeft 1 str) (fl ++ emphasisCharString)
+                                                                    extractLeftFlank (String.dropFirst 1 str) (fl ++ emphasisCharString)
                                                                 else
                                                                     { emph = str
                                                                     , fl = fl
@@ -456,7 +464,7 @@ emphasisParser emphasisChar addToLeftFlank lastElement =
                                                                 [ chompUntilNextClosing chompOptsWithFlankNested
                                                                 , chompUntilNextClosing chompOptsWithFlank
 
-                                                                , -- 
+                                                                , --
                                                                   if flank == additionalFlank then
                                                                     lookAtClosing rightFlankExtraction.emph
                                                                   else
@@ -475,7 +483,7 @@ emphasisParser emphasisChar addToLeftFlank lastElement =
                                                         in
                                                         if length - r <= 0 then
                                                             problem ""
-                                                        else if length > String.length opts.rightFlank then
+                                                        else if length > String.unitLength opts.rightFlank then
                                                             oneOf
                                                                 [ succeed identity
                                                                     |= handleClosing (Just (length - r)) text
@@ -490,7 +498,7 @@ emphasisParser emphasisChar addToLeftFlank lastElement =
                                 oneOf
                                     [ handleClosing Nothing entireText
 
-                                    , -- 
+                                    , --
                                       if String.startsWith emphasisCharString entireText then
                                         problem ""
                                       else if String.contains emphasisCharString entireText then
@@ -531,7 +539,7 @@ emphasisParser emphasisChar addToLeftFlank lastElement =
                             if emphasisChar == '_' then
                                 (&&)
                                     (isLeftFlank opts)
-                                    (case opts.precedingChar of
+                                    (when opts.precedingChar is
                                         Just c ->
                                             isUnicodeSpace c || isPunctuation c
 
@@ -568,10 +576,10 @@ emphasisParser emphasisChar addToLeftFlank lastElement =
                         -- MISC --
                         -- ---- --
                         times =
-                            String.length flank
+                            String.unitLength flank
 
                         wrapUp emphasisedText chomptOpts =
-                            case emphasisedText of
+                            when emphasisedText is
                                 "" ->
                                     problem "Nothing to emphasise"
 
@@ -588,31 +596,31 @@ emphasisParser emphasisChar addToLeftFlank lastElement =
                                             else
                                                 "*"
                                     in
-                                    case
+                                    when
                                         { parseResult = parseResult
                                         , anyExcessOpeningEmphasis =
-                                            case Array.first parseResult of
+                                            when Array.first parseResult is
                                                 Just (Text t) ->
                                                     String.startsWith emphasisCharString t
 
                                                 _ ->
                                                     False
                                         , anyExcessClosingEmphasis =
-                                            case Array.last parseResult of
+                                            when Array.last parseResult is
                                                 Just (Text t) ->
                                                     String.endsWith emphasisCharString t
 
                                                 _ ->
                                                     False
                                         , endsWithInlineCodeChar =
-                                            case Array.last parseResult of
+                                            when Array.last parseResult is
                                                 Just (Text t) ->
                                                     String.endsWith "`" t
 
                                                 _ ->
                                                     False
                                         }
-                                    of
+                                    is
                                         { anyExcessOpeningEmphasis = True } ->
                                             problem ""
 
@@ -622,29 +630,31 @@ emphasisParser emphasisChar addToLeftFlank lastElement =
                                         { endsWithInlineCodeChar = True } ->
                                             chompUntilNextClosing chomptOpts
 
-                                        { parseResult = [ Emphasis nestedOpts nestedContent ] } ->
-                                            if nestedOpts.char == emphasisChar then
-                                                nestedContent
-                                                    |> Emphasis
-                                                            { char = emphasisChar
-                                                            , times = times + nestedOpts.times
-                                                            }
-                                                    |> succeed
+                                        { parseResult = [ Emphasis record ] } ->
+                                            if record.char == emphasisChar then
+                                                Emphasis
+                                                    { char = emphasisChar
+                                                    , times = times + record.times
+                                                    , inlines = record.inlines
+                                                    }
+                                                |> succeed
                                             else
-                                                parseResult
-                                                    |> Emphasis
-                                                            { char = emphasisChar
-                                                            , times = times
-                                                            }
-                                                    |> succeed
+                                                Emphasis
+                                                    { char = emphasisChar
+                                                    , times = times
+                                                    , inlines = parseResult
+                                                    }
+                                                |> succeed
 
                                         _ ->
-                                            parseResult
-                                                |> Emphasis
-                                                        { char = emphasisChar
-                                                        , times = times
-                                                        }
-                                                |> succeed
+                                            -- Not sure what the correct solution should be yet
+                                            Emphasis
+                                                { char = emphasisChar
+                                                , times = times
+                                                , inlines = parseResult
+                                                }
+                                            |> succeed
+
                     in
                     oneOf
                         [ succeed identity
@@ -835,12 +845,12 @@ isSchemeChar c =
 
 textLoop : Array RawInline -> Maybe RawInline -> String -> Step (Array RawInline) (Array RawInline)
 textLoop inlineElements lastElement text =
-    case text of
+    when text is
         "" ->
             Done inlineElements
 
         _ ->
-            case lastElement of
+            when lastElement is
                 Just (RawInline (Text previousText)) ->
                     Loop (Array.pushLast (RawInline (Text (previousText ++ text))) (Array.dropLast 1 inlineElements))
 

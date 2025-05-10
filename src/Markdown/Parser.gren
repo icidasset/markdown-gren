@@ -42,7 +42,7 @@ parse opts string =
                 |> Maybe.andThen Result.toMaybe
 
         blocksString =
-            case frontmatterResult of
+            when frontmatterResult is
                 Just { markdown } ->
                     markdown
 

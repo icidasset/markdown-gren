@@ -17,7 +17,7 @@ lookAhead : Parser c x a -> Parser c x a
 lookAhead parser =
     bind (getParserResult parser)
         <| (\result ->
-                case result of
+                when result is
                     Ok a ->
                         Parser.succeed a
 
@@ -35,7 +35,7 @@ negativeLookAhead : x -> Parser c x a -> Parser c x {}
 negativeLookAhead x parser =
     bind (getParserResult parser)
         <| (\result ->
-                case result of
+                when result is
                     Ok _ ->
                         Parser.problem x
 
@@ -162,7 +162,7 @@ getParserOutcome parser =
                 let
                     remainingSource : String
                     remainingSource =
-                        String.dropLeft offset source
+                        String.dropFirst offset source
 
                     testParser :
                         Parser

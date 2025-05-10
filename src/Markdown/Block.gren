@@ -20,23 +20,23 @@ type Block
         }
     | Heading
         { level : Int
+        , inlines : (Array Inline)
         }
-        (Array Inline)
     | HtmlBlock Html
     | HtmlBlockNode
         { tagName : String
         , attributes : Dict String String
+        , blocks : (Array Block)
         }
-        (Array Block)
     | Inline Inline
     | OrderedLooseList
         { start : Int
+        , blocks : (Array (Array Block))
         }
-        (Array (Array Block))
     | OrderedTightList
         { start : Int
+        , inlines : (Array (Array Inline))
         }
-        (Array (Array Inline))
     | Paragraph (Array Inline)
     | ThematicBreak
     | UnorderedLooseList (Array (Array Block))

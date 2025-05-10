@@ -29,25 +29,30 @@ examples_148_to_191 =
             [ HtmlBlockNode
                 { tagName = "table"
                 , attributes = Dict.empty
-                }
-                [ HtmlBlockNode
-                    { tagName = "tr"
-                    , attributes = Dict.empty
-                    }
+                , blocks =
                     [ HtmlBlockNode
-                        { tagName = "td"
+                        { tagName = "tr"
                         , attributes = Dict.empty
-                        }
-                        [ HtmlBlockNode
-                            { tagName = "pre"
-                            , attributes = Dict.empty
-                            }
-                            [ Inline (Text "\n**Hello**,\n\n_world_.\n")
+                        , blocks =
+                            [ HtmlBlockNode
+                                { tagName = "td"
+                                , attributes = Dict.empty
+                                , blocks =
+                                    [ HtmlBlockNode
+                                        { tagName = "pre"
+                                        , attributes = Dict.empty
+                                        , blocks =
+                                            [ Inline (Text "\n**Hello**,\n\n_world_.\n")
+                                            ]
+                                        }
+                                    ]
+                                }
                             ]
-                        ]
+                        }
                     ]
-                ]
+                }
             ]
+
 
         , -- Example 149
           testBlocks
@@ -65,23 +70,27 @@ examples_148_to_191 =
             [ HtmlBlockNode
                 { tagName = "table"
                 , attributes = Dict.empty
-                }
-                [ HtmlBlockNode
-                    { tagName = "tr"
-                    , attributes = Dict.empty
-                    }
+                , blocks =
                     [ HtmlBlockNode
-                        { tagName = "td"
+                        { tagName = "tr"
                         , attributes = Dict.empty
+                        , blocks =
+                            [ HtmlBlockNode
+                                { tagName = "td"
+                                , attributes = Dict.empty
+                                , blocks =
+                                    [ Inline (Text "hi")
+                                    ]
+                                }
+                            ]
                         }
-                        [ Inline (Text "hi")
-                        ]
                     ]
-                ]
+                }
             , Paragraph
                 [ Text "okay."
                 ]
             ]
+
 
         , -- Example 150
           -- SKIP: No partial tags allowed
@@ -101,15 +110,15 @@ examples_148_to_191 =
             [ HtmlBlockNode
                 { tagName = "DIV"
                 , attributes = Dict.set "CLASS" "foo" Dict.empty
-                }
-                [ Paragraph
-                    [ Emphasis
-                        { char = '*'
-                        , times = 1
-                        }
-                        [ Text "Markdown"
+                , blocks =
+                    [ Paragraph
+                        [ Emphasis
+                            { char = '*'
+                            , times = 1
+                            , inlines = [ Text "Markdown" ]
+                            }
                         ]
                     ]
-                ]
+                }
             ]
         ]
