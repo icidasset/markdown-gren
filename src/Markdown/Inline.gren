@@ -15,16 +15,16 @@ type Inline
     = Emphasis
         { char : Char
         , times : Int
+        , inlines : (Array Inline)
         }
-        (Array Inline)
     | HardLineBreak
     | InlineCode String
     | InlineHtml Html
     | InlineHtmlNode
         { tagName : String
         , attributes : Dict String String
+        , inlines : (Array Inline)
         }
-        (Array Inline)
     | Image
         { alt : String
         , url : String

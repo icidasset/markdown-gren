@@ -52,35 +52,29 @@ blockTests =
         , testBlock
             (Heading
                 { level = 1
+                , inlines = [ HardLineBreak ]
                 }
-                [ HardLineBreak
-                ]
             )
         , testBlock (HtmlBlock (Declaration "Declaration"))
         , testBlock
             (HtmlBlockNode
                 { tagName = "tagName"
                 , attributes = Dict.set "key" "value" Dict.empty
+                , blocks = [ ThematicBreak ]
                 }
-                [ ThematicBreak
-                ]
             )
         , testBlock (Inline HardLineBreak)
         , testBlock
             (OrderedLooseList
                 { start = 1
+                , blocks = [ [ ThematicBreak ] ]
                 }
-                [ [ ThematicBreak
-                  ]
-                ]
             )
         , testBlock
             (OrderedTightList
                 { start = 1
+                , inlines = [ [ HardLineBreak ] ]
                 }
-                [ [ HardLineBreak
-                  ]
-                ]
             )
         , testBlock
             (Paragraph
@@ -125,9 +119,8 @@ inlineTests =
             (Emphasis
                 { char = '*'
                 , times = 1
+                , inlines = [ Text "emphasised" ]
                 }
-                [ Text "emphasised"
-                ]
             )
         , testInline HardLineBreak
         , testInline (InlineCode "code")
@@ -136,9 +129,8 @@ inlineTests =
             (InlineHtmlNode
                 { tagName = "tagName"
                 , attributes = Dict.set "key" "value" Dict.empty
+                , inlines = [ Text "nested" ]
                 }
-                [ Text "nested"
-                ]
             )
         , testInline
             (Image

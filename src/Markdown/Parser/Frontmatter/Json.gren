@@ -25,7 +25,7 @@ parser decoder =
                         jsonString =
                             "{" ++ jsonWithoutOpeningChar
                     in
-                    case Json.decodeString decoder jsonString of
+                    when Json.decodeString decoder jsonString is
                         Ok metadata ->
                             Just metadata
 
