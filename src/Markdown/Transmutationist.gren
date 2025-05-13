@@ -126,19 +126,17 @@ toHtmlWithOptions options block =
         Inline inline ->
             transmuteInlines inline
 
-        -- TODO rename block2
         OrderedLooseList { start, blocks } ->
             Html.ol
                 [ A.attribute "start" (String.fromInt start)
                 ]
-                (Array.map (\blocks2 -> Html.li [] (Array.map toHtml blocks2)) blocks)
+                (Array.map (Array.map toHtml >> Html.li []) blocks)
 
-        -- TODO rename inlines2
         OrderedTightList { start, inlines } ->
             Html.ol
                 [ A.attribute "start" (String.fromInt start)
                 ]
-                (Array.map (\inlines2 -> Html.li [] (Array.map transmuteInlines inlines2)) inlines)
+                (Array.map (Array.map transmuteInlines >> Html.li []) inlines)
 
         Paragraph inlines ->
             Html.p [] (Array.map transmuteInlines inlines)

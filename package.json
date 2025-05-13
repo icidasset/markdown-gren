@@ -1,5 +1,9 @@
 {
   "dependencies": {
-    "gren-lang": "^0.5.2"
+    "gren-lang": "^0.5.2",
+    "just-install": "^2.0.2"
+  },
+  "scripts": {
+    "test": "just test"
   }
 }

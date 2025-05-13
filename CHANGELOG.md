@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.0.0
+
+Update to gren v0.5.x
+
+
 ## 3.1.0
 
 Add ability to transform to and from JSON.
