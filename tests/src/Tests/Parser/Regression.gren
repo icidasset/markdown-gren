@@ -11,9 +11,10 @@ semantics that mismatch makes the trailing line-parser
 very end of the input (no terminating blank line) causes the whole document to
 return `Err` — which `Markdown.Parser.parse` turns into `blocks = []`.
 
-markdown-gren now reproduces the pre-6.1.0 semantics via `Parser.Extra.chompToNeedle`
-and `Parser.Extra.chompToNeedleOrEnd`, so it is compatible with every parser
-`6.0.0 <= v < 7.0.0`. A valid document must parse to a populated `Array Block`,
+markdown-gren now reproduces the old (stop-*before*-needle) chomping semantics
+via `Parser.Extra.chompToNeedle` and `Parser.Extra.chompToNeedleOrEnd`, so it is
+compatible with `gren-lang/parser` `6.2.0 <= v < 7.0.0` (and `gren-lang/core`
+`7.2.0 <= v < 8.0.0`). A valid document must parse to a populated `Array Block`,
 never a whole-document error.
 
 -}

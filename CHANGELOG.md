@@ -2,17 +2,26 @@
 
 ## 5.1.0
 
-Support `gren-lang/parser` 6.x, which changed `findSubString` (the kernel that
-backs `chompUntilEndOr` / `chompUntil`) to *consume* the needle it matches.
+Support `gren-lang/parser` 6.2.0+ (and `gren-lang/core` 7.2.0+).
+
+Two parser changes matter here. From `gren-lang/parser` 6.1.0, `findSubString`
+(the kernel backing `chompUntilEndOr` / `chompUntil`) began to *consume* the
+needle it matches; and from 6.2.0 the parser's `getChompedString` /
+`mapChompedString` switched to `String.sliceUnits` offsets (requiring core 7.2+),
+which is what `String.sliceUnits`-based code needs to align with.
+
 markdown-gren's block parsers relied on the older behaviour where chomping stops
-*before* the needle, so on parser 6.1.0+ a multi-line paragraph at the end of the
-input (no trailing blank line) made `Markdown.Parser.Blocks.parse` return `Err`,
-which `Markdown.parse` silently turned into `blocks = []` (empty pages).
+*before* the needle, so once the needle is consumed a multi-line paragraph at the
+end of the input (no trailing blank line) made `Markdown.Parser.Blocks.parse`
+return `Err`, which `Markdown.parse` silently turned into `blocks = []` (empty
+pages).
 
 Rather than rewriting every block parser for the new semantics, `Parser.Extra`
-now ships `chompToNeedle` / `chompToNeedleOrEnd`, which preserve the pre-6.1.0
-chomping behaviour, and the parsers now use those. This removes the previous
-`< 6.2.0` restriction; the dependency range is now `6.0.0 <= v < 7.0.0`.
+now ships `chompToNeedle` / `chompToNeedleOrEnd`, which preserve the old
+(stop-*before*-needle) chomping behaviour, and the parsers now use those. This
+removes the previous `< 6.2.0` restriction; the dependency range is now
+`6.2.0 <= v < 7.0.0` for `gren-lang/parser` and `7.2.0 <= v < 8.0.0` for
+`gren-lang/core`.
 
 ## 5.0.1
 

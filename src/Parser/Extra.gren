@@ -238,7 +238,9 @@ withOptionalLeadingSpaces p =
 
 
 -- Compatible with the `chompUntil` / `chompUntilEndOr` behavior that shipped
--- in `gren-lang/parser` before 6.1.0 reworked `findSubString` to consume the needle.
+-- in `gren-lang/parser` before 6.1.0 reworked `findSubString` to consume the
+-- needle (from 6.2.0 the parser also switched to `String.sliceUnits` offsets,
+-- which is why these helpers require core 7.2+).
 --
 -- Under that change `chompUntil` and `chompUntilEndOr` now chomp *through* the
 -- needle they match. The parsers in this package were written against the older
