@@ -20,6 +20,7 @@ import Tests.Parser.Blocks.Paragraph exposing (..)
 import Tests.Parser.Inline.Autolinks exposing (..)
 import Tests.Parser.Inline.Codespan exposing (..)
 import Tests.Parser.Inline.Emphasis exposing (..)
+import Tests.Parser.Regression exposing (..)
 
 
 
@@ -30,6 +31,7 @@ tests =
     Test.concat
         [ blocks
         , inlines
+        , multiLineParagraphAtEndOfInput
         ]
 
 

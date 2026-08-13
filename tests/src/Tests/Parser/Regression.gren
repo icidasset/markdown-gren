@@ -1,0 +1,58 @@
+module Tests.Parser.Regression exposing ( multiLineParagraphAtEndOfInput )
+
+{-| Regression tests for the markdown-gren 5.0.0 whole-document parse failure.
+
+See the bug report: with `gren-lang/parser` 6.2.x, `chompUntilEndOr` (backed by
+the parser kernel's `findSubString`) began consuming the needle it matches.
+markdown-gren's block parsers rely on the old semantics where `chompUntilEndOr "\n"`
+stops *before* the newline. Under 6.2.x that mismatch makes the trailing
+line-parser (`oneOf [ chompIf isLineEnding, end ]`) fail, so a multi-line
+paragraph at the very end of the input (no terminating blank line) causes the
+whole document to return `Err` — which `Markdown.Parser.parse` turns into
+`blocks = []`.
+
+These tests lock in the expected behavior on a compatible parser
+(`6.0.0 <= v < 6.2.0`): a valid document must parse to a populated `Array Block`,
+never a whole-document error.
+
+-}
+
+import Array
+import Expect
+import Markdown.Parser.Blocks as Blocks
+import Test exposing (..)
+
+
+nBlocks : String -> Int
+nBlocks src =
+    when Blocks.parse src is
+        Ok a ->
+            Array.length a
+
+        Err _ ->
+            -1
+
+
+multiLineParagraphAtEndOfInput =
+    describe "Multi-line paragraph at end of input (regression)"
+        [ test "two-line paragraph, no trailing blank line" <|
+            \_ ->
+                "alpha\nbeta"
+                    |> nBlocks
+                    |> Expect.equal 1
+
+        , test "three-line paragraph at end of input" <|
+            \_ ->
+                "alpha\nbeta\ngamma\n"
+                    |> nBlocks
+                    |> Expect.equal 1
+
+        , test "paragraph then code then trailing multi-line paragraph" <|
+            \_ ->
+                ("intro\n\n"
+                    ++ "```\ncode\n```\n\n"
+                    ++ "last paragraph\ncontinues here"
+                )
+                    |> nBlocks
+                    |> Expect.equal 3
+        ]
