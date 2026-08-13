@@ -237,6 +237,74 @@ withOptionalLeadingSpaces p =
 
 
 
+-- Compatible with the `chompUntil` / `chompUntilEndOr` behavior that shipped
+-- in `gren-lang/parser` before 6.1.0 reworked `findSubString` to consume the needle.
+--
+-- Under that change `chompUntil` and `chompUntilEndOr` now chomp *through* the
+-- needle they match. The parsers in this package were written against the older
+-- semantics, where chomping stops *before* the needle (a follow-up parser then
+-- consumes the needle). These two helpers reproduce that earlier behavior so the
+-- block parsers don't have to be rewritten for the new semantics.
+
+
+{-| Chomp through the input until the first occurrence of `needle`, *before*
+consuming it — or, if `needle` never occurs, chomp through the rest of the
+input. Equivalent to the pre-change `Parser.chompUntilEndOr`.
+-}
+chompToNeedleOrEnd : String -> Parser {}
+chompToNeedleOrEnd needle =
+    remainingFromOffset
+        |> andThen
+                (\remaining ->
+                    chompUnits (String.unitLength (beforeNeedle needle remaining))
+                )
+
+
+{-| Chomp through the input until the first occurrence of `needle`, stopping
+*before* it. Fails if `needle` never occurs. Equivalent to the pre-change
+`Parser.chompUntil`.
+-}
+chompToNeedle : String -> Parser {}
+chompToNeedle needle =
+    remainingFromOffset
+        |> andThen
+                (\remaining ->
+                    if String.contains needle remaining then
+                        chompUnits (String.unitLength (beforeNeedle needle remaining))
+                    else
+                        problem "chompToNeedle: needle not found"
+                )
+
+
+remainingFromOffset : Parser String
+remainingFromOffset =
+    succeed
+        (\offset source ->
+            String.sliceUnits offset (String.unitLength source) source
+        )
+        |= getOffset
+        |= getSource
+
+
+beforeNeedle : String -> String -> String
+beforeNeedle needle remaining =
+    remaining
+        |> String.split needle
+        |> Array.first
+        |> Maybe.withDefault remaining
+
+
+chompUnits : Int -> Parser {}
+chompUnits amount =
+    loop 0 <| \step ->
+        if step >= amount then
+            succeed (Done {})
+        else
+            succeed (\_ -> Loop (step + 1))
+                |= chompIf (\_ -> True)
+
+
+
 -- BINDS
 
 

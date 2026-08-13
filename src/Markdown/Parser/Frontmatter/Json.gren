@@ -18,7 +18,7 @@ parser : Json.Decoder metadata -> Frontmatter.Parser metadata
 parser decoder =
     succeed identity
         |. specificChar '{'
-        |= getChompedString (chompUntilEndOr "\n\n")
+        |= getChompedString (chompToNeedleOrEnd "\n\n")
         |> map
                 (\jsonWithoutOpeningChar ->
                     let

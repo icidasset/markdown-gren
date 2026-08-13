@@ -4,7 +4,7 @@
   "name": "icidasset/markdown-gren",
   "summary": "Markdown parser and printer",
   "license": "BSD-3-Clause",
-  "version": "5.0.1",
+  "version": "5.1.0",
   "exposed-modules": [
     "Markdown",
     "Markdown.Block",
@@ -19,7 +19,7 @@
   "gren-version": "0.6.0 <= v < 0.7.0",
   "dependencies": {
     "gren-lang/core": "7.0.0 <= v < 8.0.0",
-    "gren-lang/parser": "6.0.0 <= v < 6.2.0",
+    "gren-lang/parser": "6.0.0 <= v < 7.0.0",
     "icidasset/html-gren": "6.0.0 <= v < 7.0.0"
   }
 }

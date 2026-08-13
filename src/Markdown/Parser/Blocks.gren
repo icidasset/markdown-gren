@@ -359,7 +359,7 @@ rawBlockParser blocks =
                             in
                             succeed identity
                                 |. specificAmountOf totalSpacesNeeded (specificChar ' ')
-                                |= getChompedString (chompUntilEndOr "\n")
+                                |= getChompedString (chompToNeedleOrEnd "\n")
                                 |. oneOf
                                         [ symbol "\n"
                                         , end
@@ -561,7 +561,7 @@ rawBlockParser blocks =
                                 |> Loop
             )
             |. many (specificChar ' ')
-            |= getChompedString (chompUntilEndOr "\n")
+            |= getChompedString (chompToNeedleOrEnd "\n")
             |. oneOf
                     [ chompIf isLineEnding
                     , end
@@ -578,7 +578,7 @@ blockQuoteParser =
     succeed identity
         |. notMoreThanXSpaces 3
         |. specificChar '>'
-        |= getChompedString (chompUntilEndOr "\n\n")
+        |= getChompedString (chompToNeedleOrEnd "\n\n")
         |. spaces
         |> andThen
                 (\string ->
@@ -627,7 +627,7 @@ fencedCodeParser =
         |> andThen
                 (\opening ->
                     succeed identity
-                        |= getChompedString (chompUntilEndOr "\n")
+                        |= getChompedString (chompToNeedleOrEnd "\n")
                         |> map
                                 (\l ->
                                     { opening = opening
@@ -644,7 +644,7 @@ fencedCodeParser =
         |> andThen
                 (\{ opening, language } ->
                     succeed identity
-                        |= getChompedString (chompUntilEndOr opening)
+                        |= getChompedString (chompToNeedleOrEnd opening)
                         |. symbol opening
                         |> map
                                 (\string ->
@@ -672,7 +672,7 @@ indentedCodeParser : Parser String
 indentedCodeParser =
     succeed identity
         |. symbol "    "
-        |= getChompedString (chompUntilEndOr "\n")
+        |= getChompedString (chompToNeedleOrEnd "\n")
         |. chompIf isLineEnding
         |> identity
 
@@ -695,7 +695,7 @@ headingParser =
                     succeed level
             ))
         |. some (specificChar ' ')
-        |= getChompedString (chompUntilEndOr "\n")
+        |= getChompedString (chompToNeedleOrEnd "\n")
         |. oneOf
             [ end
             , spaces
@@ -810,7 +810,7 @@ orderedListParser =
                             |> andThen
                                     (\{ start, symbol } ->
                                         succeed identity
-                                            |= getChompedString (chompUntilEndOr "\n")
+                                            |= getChompedString (chompToNeedleOrEnd "\n")
                                             |. chompIf isLineEnding
                                             |> map
                                                     (\line ->
@@ -840,7 +840,7 @@ thematicBreakParser =
                             String.fromArray (Array.repeat 2 openingChar)
                     in
                     succeed identity
-                        |= getChompedString (chompUntilEndOr "\n")
+                        |= getChompedString (chompToNeedleOrEnd "\n")
                         |. spaces
                         |> andThen
                                 (\text ->
@@ -923,7 +923,7 @@ unorderedListParser =
                             |> andThen
                                     (\listChar ->
                                         succeed identity
-                                            |= getChompedString (chompUntilEndOr "\n")
+                                            |= getChompedString (chompToNeedleOrEnd "\n")
                                             |. oneOf
                                                     [ chompIf isLineEnding
                                                     , end

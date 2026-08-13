@@ -249,7 +249,7 @@ autolinksParser =
             |= getChompedString (chompIf isSchemeChar)
             |= getChompedString (chompWhile isSchemeChar)
             |. specificChar ':'
-            |= getChompedString (chompUntil ">")
+            |= getChompedString (chompToNeedle ">")
             |. specificChar '>'
             |> andThen
                     (\url ->
@@ -308,7 +308,7 @@ emphasisParser emphasisChar addToLeftFlank lastElement =
                     let
                         chompUntilNextClosing opts =
                             succeed identity
-                                |= getChompedString (chompUntil opts.rightFlank)
+                                |= getChompedString (chompToNeedle opts.rightFlank)
                                 |> andThen (check opts)
 
                         check opts additionalEmphasisedText =
@@ -659,7 +659,7 @@ emphasisParser emphasisChar addToLeftFlank lastElement =
                     oneOf
                         [ succeed identity
                             |. symbol flank
-                            |. lookAhead (chompUntil flank)
+                            |. lookAhead (chompToNeedle flank)
                             |> andThen
                                     (\_ ->
                                         chompUntilNextClosing
@@ -699,14 +699,14 @@ imageParser : Parser Inline
 imageParser =
     succeed identity
         |. symbol "!["
-        |= getChompedString (chompUntil "]")
+        |= getChompedString (chompToNeedle "]")
         |. specificChar ']'
         |> andThen
                 (\alt ->
                     -- TODO: Support image titles
                     succeed identity
                         |. specificChar '('
-                        |= getChompedString (chompUntil ")")
+                        |= getChompedString (chompToNeedle ")")
                         |. specificChar ')'
                         |> map
                                 (\url ->
@@ -738,7 +738,7 @@ inlineCodeParser inlineElements lastElement =
                     let
                         chompUntilClosing close code =
                             succeed identity
-                                |= getChompedString (chompUntilEndOr close)
+                                |= getChompedString (chompToNeedleOrEnd close)
                                 |. symbol close
                                 |> backtrackable
                                 |> andThen (checkClosing close code)
@@ -800,7 +800,7 @@ linkParser : Parser Inline
 linkParser =
     succeed identity
         |. specificChar '['
-        |= getChompedString (chompUntil "]")
+        |= getChompedString (chompToNeedle "]")
         |. specificChar ']'
         |> andThen
                 (\text ->
@@ -810,7 +810,7 @@ linkParser =
                         -- TODO: Support link titles
                         succeed identity
                             |. specificChar '('
-                            |= getChompedString (chompUntil ")")
+                            |= getChompedString (chompToNeedle ")")
                             |. specificChar ')'
                             |> andThen
                                     (\url ->

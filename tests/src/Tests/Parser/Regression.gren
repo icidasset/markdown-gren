@@ -2,17 +2,18 @@ module Tests.Parser.Regression exposing ( multiLineParagraphAtEndOfInput )
 
 {-| Regression tests for the markdown-gren 5.0.0 whole-document parse failure.
 
-See the bug report: with `gren-lang/parser` 6.2.x, `chompUntilEndOr` (backed by
-the parser kernel's `findSubString`) began consuming the needle it matches.
-markdown-gren's block parsers rely on the old semantics where `chompUntilEndOr "\n"`
-stops *before* the newline. Under 6.2.x that mismatch makes the trailing
-line-parser (`oneOf [ chompIf isLineEnding, end ]`) fail, so a multi-line
-paragraph at the very end of the input (no terminating blank line) causes the
-whole document to return `Err` — which `Markdown.Parser.parse` turns into
-`blocks = []`.
+See the bug report: `gren-lang/parser` 6.1.0 changed `findSubString` (which backs
+`chompUntilEndOr` / `chompUntil`) to consume the needle it matches, whereas
+markdown-gren's block parsers relied on the older (6.0.0) semantics where
+`chompUntilEndOr "\n"` stops *before* the newline. Under the new parser
+semantics that mismatch makes the trailing line-parser
+(`oneOf [ chompIf isLineEnding, end ]`) fail, so a multi-line paragraph at the
+very end of the input (no terminating blank line) causes the whole document to
+return `Err` — which `Markdown.Parser.parse` turns into `blocks = []`.
 
-These tests lock in the expected behavior on a compatible parser
-(`6.0.0 <= v < 6.2.0`): a valid document must parse to a populated `Array Block`,
+markdown-gren now reproduces the pre-6.1.0 semantics via `Parser.Extra.chompToNeedle`
+and `Parser.Extra.chompToNeedleOrEnd`, so it is compatible with every parser
+`6.0.0 <= v < 7.0.0`. A valid document must parse to a populated `Array Block`,
 never a whole-document error.
 
 -}
