@@ -19,6 +19,7 @@ import Tests.Parser.Blocks.Html exposing (..)
 import Tests.Parser.Blocks.Paragraph exposing (..)
 import Tests.Parser.Inline.Autolinks exposing (..)
 import Tests.Parser.Inline.Codespan exposing (..)
+import Tests.Parser.Inline.Emoji exposing (..)
 import Tests.Parser.Inline.Emphasis exposing (..)
 import Tests.Parser.Regression exposing (..)
 
@@ -55,4 +56,5 @@ inlines =
         [ examples_328_to_349
         , examples_350_to_480
         , examples_593_to_611
+        , emojiTests
         ]

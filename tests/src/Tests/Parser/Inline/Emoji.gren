@@ -1,0 +1,44 @@
+module Tests.Parser.Inline.Emoji exposing ( emojiTests )
+
+{-| Emoji tests.
+
+Emojis are plain text, but they exercise the parser's grapheme-cluster
+handling harder than ASCII does: multi-codepoint sequences (ZWJ joins, skin
+tone modifiers, emoji flags) must not be torn apart or dropped anywhere along
+the parse pipeline. If an emoji is mangled here it will be rendered mangled by
+`Markdown.toHtml`, so these tests lock the parsing side down at both the
+inline and the block level.
+
+-}
+
+import Expect
+import Markdown.Block exposing ( Block(..) )
+import Markdown.Inline exposing ( Inline(..) )
+import Test exposing (..)
+import Tests.Parser.Helpers exposing (..)
+
+
+emojiTests =
+    describe
+        "Emoji"
+        [ describe
+            "inline"
+            [ testInline "hello 😀 world" (Text "hello 😀 world")
+            , testInline "this is so cool 👍" (Text "this is so cool 👍")
+            , testInline "🚀 launch 🛰️" (Text "🚀 launch 🛰️")
+            , testInline "wave 👋🏽 friend" (Text "wave 👋🏽 friend")
+            , testInline "family 👨‍👩‍👧 together" (Text "family 👨‍👩‍👧 together")
+            ]
+        , describe
+            "paragraph"
+            [ testBlock
+                "a rocket 🚀"
+                (Paragraph [ Text "a rocket 🚀" ])
+            , testBlock
+                "family 👨‍👩‍👧"
+                (Paragraph [ Text "family 👨‍👩‍👧" ])
+            , testBlock
+                "plain 123 and flags 🇺🇸"
+                (Paragraph [ Text "plain 123 and flags 🇺🇸" ])
+            ]
+        ]

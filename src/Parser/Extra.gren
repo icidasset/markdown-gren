@@ -258,7 +258,7 @@ chompToNeedleOrEnd needle =
     remainingFromOffset
         |> andThen
                 (\remaining ->
-                    chompUnits (String.unitLength (beforeNeedle needle remaining))
+                    chompUnits (charCount (beforeNeedle needle remaining))
                 )
 
 
@@ -272,7 +272,7 @@ chompToNeedle needle =
         |> andThen
                 (\remaining ->
                     if String.contains needle remaining then
-                        chompUnits (String.unitLength (beforeNeedle needle remaining))
+                        chompUnits (charCount (beforeNeedle needle remaining))
                     else
                         problem "chompToNeedle: needle not found"
                 )
@@ -294,6 +294,18 @@ beforeNeedle needle remaining =
         |> String.split needle
         |> Array.first
         |> Maybe.withDefault remaining
+
+
+{-| The number of logical characters (code points) in `str`. The parser's
+`chompIf` advances one code point per step — an astral-plane character such as
+an emoji is a single code point even though it spans two UTF-16 units — so this
+(counting full code points, not UTF-16 units) is the value `chompUnits` needs.
+-}
+charCount : String -> Int
+charCount str =
+    str
+        |> String.toArray
+        |> Array.length
 
 
 chompUnits : Int -> Parser {}
